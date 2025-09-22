@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -13,8 +14,12 @@ import (
 const manifestFileName = "hls/stream.m3u8"
 
 func main() {
+	// Adiciona flag para codec de vídeo
+	codec := flag.String("codec", "h264_qsv", "Codec de vídeo para FFmpeg (ex: h264_qsv, libx264, etc)")
+	flag.Parse()
+
 	// Inicia o FFmpeg em uma goroutine separada
-	go startFFmpeg()
+	go startFFmpeg(*codec)
 
 	// Espera até que o arquivo de manifesto HLS seja criado
 	log.Println("Aguardando o FFmpeg criar o arquivo de manifesto HLS...")
@@ -57,36 +62,26 @@ func main() {
 		http.ServeFile(w, r, filePath)
 	})
 
-	log.Println("Servidor iniciado na porta 8080. Acesse http://172.26.1.103:8080")
+	log.Println("Servidor iniciado na porta 8080. Acesse http://192.168.11.13:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-// startFFmpeg (sem mudanças)
-func startFFmpeg() {
+// startFFmpeg agora recebe o codec como argumento
+func startFFmpeg(codec string) {
 	os.RemoveAll("hls")
 	os.Mkdir("hls", 0755)
 
-	log.Println("Iniciando o jogo...")
-	gamePath := "C:/Program Files (x86)/Steam/steamapps/common/Salt and Sanctuary/salt.exe"
-	cmdGame := exec.Command(gamePath)
-	if err := cmdGame.Start(); err != nil {
-		log.Fatalf("Erro ao iniciar o jogo: %v", err)
-	}
-
-	log.Println("Esperando 3 segundos para o jogo carregar...")
-	time.Sleep(3 * time.Second)
-
 	log.Println("Iniciando FFmpeg para gerar o stream HLS...")
+	log.Println(codec)
 	cmdFFmpeg := exec.Command("ffmpeg",
 		"-f", "dshow",
 		"-i", "video=screen-capture-recorder",
-		"-tune", "zerolatency",
-		"-c:v", "h264_qsv",
-		"-g", "1", // Keyframe em todo frame
-		//"-bf", "0", // Sem B-frames
+		"-c:v", codec,
+		"-g", "2", // Keyframe em todo frame
+		"-bf", "0", // Sem B-frames
 		"-f", "hls",
 		"-hls_list_size", "6",
-		"-hls_time", "0.3",
+		"-hls_time", "0.2",
 		"hls/stream.m3u8")
 
 	stderr, err := cmdFFmpeg.StderrPipe()

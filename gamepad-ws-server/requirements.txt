@@ -1,0 +1,4 @@
+websockets
+pygame
+pyautogui
+numpy
