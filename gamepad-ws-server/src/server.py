@@ -1,30 +1,24 @@
 import asyncio
 import websockets
-import json
+import struct
 from gamepad import Gamepad
 
-async def handle_connection(websocket, path):
+async def handle_connection(websocket):
     gamepad = Gamepad()
-    await websocket.send(json.dumps({"status": "Connected to gamepad server"}))
+    print("Cliente conectado!")
 
     try:
-        while True:
-            message = await websocket.recv()
-            data = json.loads(message)
-            action = data.get("action")
-
-            if action:
-                result = gamepad.execute_action(action)
-                await websocket.send(json.dumps({"status": "Action executed", "result": result}))
-            else:
-                await websocket.send(json.dumps({"error": "No action specified"}))
+        async for message in websocket:
+            if isinstance(message, bytes) and len(message) == 4:
+                tipo, idx, valor = struct.unpack("<BBh", message)
+                gamepad.handle_input(tipo, idx, valor)
     except websockets.exceptions.ConnectionClosed:
-        print("Connection closed")
+        print("Conexão fechada")
 
 async def main():
-    async with websockets.serve(handle_connection, "localhost", 8765):
-        print("WebSocket server started on ws://localhost:8765")
-        await asyncio.Future()  # run forever
+    async with websockets.serve(handle_connection, "192.168.11.13", 8765):
+        print("Servidor WebSocket rodando em ws://192.168.11.13:8765")
+        await asyncio.Future()
 
 if __name__ == "__main__":
     asyncio.run(main())

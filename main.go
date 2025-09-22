@@ -21,6 +21,9 @@ func main() {
 	// Inicia o FFmpeg em uma goroutine separada
 	go startFFmpeg(*codec)
 
+	// Inicia o servidor WebSocket Python em uma goroutine separada
+	go startPythonWebSocketServer()
+
 	// Espera até que o arquivo de manifesto HLS seja criado
 	log.Println("Aguardando o FFmpeg criar o arquivo de manifesto HLS...")
 	for {
@@ -108,4 +111,17 @@ func startFFmpeg(codec string) {
 	}()
 
 	cmdFFmpeg.Wait()
+}
+
+// Função para rodar o servidor WebSocket Python
+func startPythonWebSocketServer() {
+	cmd := exec.Command("python", "gamepad-ws-server/src/server.py")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Start()
+	if err != nil {
+		log.Printf("Erro ao iniciar o servidor WebSocket Python: %v", err)
+		return
+	}
+	log.Println("Servidor WebSocket Python iniciado.")
 }

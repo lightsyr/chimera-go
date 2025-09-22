@@ -1,49 +1,564 @@
 <!DOCTYPE html>
 <html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chimera 0.1 Alpha</title>
-
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <link href="https://vjs.zencdn.net/8.5.2/video-js.css" rel="stylesheet" />
-    
     <style>
-        body {
-            background-color: #111827;
+      body {
+        background-color: #111827;
+      }
+      .joystick-area {
+        width: 120px;
+        height: 120px;
+        background: #374151cc;
+        border-radius: 50%;
+        position: relative;
+        touch-action: none;
+      }
+      .joystick-knob {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        position: absolute;
+        pointer-events: none;
+      }
+      #left-knob {
+        background: #3b82f6;
+      }
+      #right-knob {
+        background: #22c55e;
+      }
+      .overlay-controls {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: stretch;
+        padding: 2vw;
+      }
+      .overlay-controls * {
+        pointer-events: auto;
+      }
+      .controls-row {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+      }
+      .controls-triggers {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        width: 100%;
+        margin-bottom: 2vw;
+      }
+      .controls-triggers .triggers-group {
+        display: flex;
+        flex-direction: row;
+        gap: 2vw;
+      }
+      .controls-main {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: flex-end;
+        width: 100%;
+        flex: 1;
+      }
+      .controls-left,
+      .controls-right {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2vw;
+      }
+      .controls-center {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2vw;
+        flex: 1;
+      }
+      .dpad-row {
+        display: flex;
+        gap: 1vw;
+        justify-content: center;
+      }
+      .controls-bottom {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        align-items: center;
+        gap: 2vw;
+        margin-top: 2vw;
+      }
+      /* XYBA cruz layout */
+      .xyba-cross {
+        display: grid;
+        grid-template-areas:
+          ".   y   ."
+          "x   a   b"
+          ".   .   .";
+        grid-template-columns: 40px 40px 40px;
+        grid-template-rows: 40px 40px 40px;
+        gap: 8px;
+        justify-items: center;
+        align-items: center;
+        margin-top: 16px;
+      }
+      .xyba-btn-a {
+        grid-area: a;
+      }
+      .xyba-btn-b {
+        grid-area: b;
+      }
+      .xyba-btn-x {
+        grid-area: x;
+      }
+      .xyba-btn-y {
+        grid-area: y;
+      }
+      /* Fullscreen overlay always visible */
+      .fullscreen-overlay {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 10000 !important;
+        pointer-events: none;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        align-items: stretch !important;
+        padding: 2vw !important;
+      }
+      .fullscreen-overlay * {
+        pointer-events: auto;
+      }
+      @media (orientation: landscape) {
+        .overlay-controls,
+        .fullscreen-overlay {
+          flex-direction: column !important;
+          justify-content: space-between !important;
+          align-items: stretch !important;
+          padding-bottom: 2vw !important;
         }
+        .controls-row,
+        .controls-main,
+        .controls-triggers,
+        .controls-bottom {
+          flex-direction: row !important;
+          width: 100% !important;
+        }
+        .controls-left,
+        .controls-right {
+          gap: 2vw !important;
+        }
+      }
     </style>
-</head>
-<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4 md:p-8">
-
-    <div class="max-w-7xl w-full mx-auto text-center">
-        <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-            <video
-                id="video-player"
-                class="video-js vjs-default-skin w-full"
-                controls
-                preload="auto"
-                autoplay
-                muted
-                data-setup='{}'
+  </head>
+  <body
+    class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-0"
+  >
+    <div
+      class="max-w-7xl w-full mx-auto text-center relative"
+      style="height: 100vh"
+    >
+      <div
+        class="bg-gray-800 rounded-lg shadow-lg overflow-hidden relative"
+        style="height: 100vh"
+      >
+        <video
+          id="video-player"
+          class="video-js vjs-default-skin w-full h-full"
+          controls
+          preload="auto"
+          autoplay
+          muted
+          data-setup="{}"
+          style="height: 100vh"
+        >
+          <source src="/hls/stream.m3u8" type="application/x-mpegURL" />
+        </video>
+        <!-- Overlay dos controles -->
+        <div id="overlay-controls" class="overlay-controls">
+          <!-- Gatilhos -->
+          <div class="controls-triggers controls-row">
+            <div class="triggers-group">
+              <div class="flex flex-col items-center">
+                <label for="lt" class="text-xs mb-1">LT</label>
+                <input
+                  type="range"
+                  id="lt"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value="0"
+                  class="w-16"
+                />
+              </div>
+              <button
+                class="bg-gray-700 text-white font-bold py-2 px-4 rounded"
+                data-action="lb"
+              >
+                LB
+              </button>
+            </div>
+            <div class="triggers-group">
+              <button
+                class="bg-gray-700 text-white font-bold py-2 px-4 rounded"
+                data-action="rb"
+              >
+                RB
+              </button>
+              <div class="flex flex-col items-center">
+                <label for="rt" class="text-xs mb-1">RT</label>
+                <input
+                  type="range"
+                  id="rt"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value="0"
+                  class="w-16"
+                />
+              </div>
+            </div>
+          </div>
+          <!-- Analógicos, Dpad e Botões principais -->
+          <div class="controls-main controls-row">
+            <div class="controls-left">
+              <div class="flex flex-col items-center mb-2">
+                <span class="text-xs mb-1">Left Stick</span>
+                <div id="left-stick" class="joystick-area">
+                  <div
+                    id="left-knob"
+                    class="joystick-knob"
+                    style="left: 40px; top: 40px"
+                  ></div>
+                </div>
+              </div>
+              <div class="flex flex-col items-center mb-2">
+                <span class="text-xs mb-1">D-Pad</span>
+                <div class="dpad-row">
+                  <button
+                    class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded"
+                    data-action="dpad_up"
+                  >
+                    ▲
+                  </button>
+                </div>
+                <div class="dpad-row">
+                  <button
+                    class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded"
+                    data-action="dpad_left"
+                  >
+                    ◀
+                  </button>
+                  <button
+                    class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded"
+                    data-action="dpad_down"
+                  >
+                    ▼
+                  </button>
+                  <button
+                    class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded"
+                    data-action="dpad_right"
+                  >
+                    ▶
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="controls-center">
+              <div id="ws-status" class="mt-2 text-sm text-gray-400"></div>
+            </div>
+            <div class="controls-right">
+              <div class="flex flex-col items-center mb-2">
+                <span class="text-xs mb-1">Right Stick</span>
+                <div id="right-stick" class="joystick-area">
+                  <div
+                    id="right-knob"
+                    class="joystick-knob"
+                    style="left: 40px; top: 40px"
+                  ></div>
+                </div>
+              </div>
+              <div class="flex flex-col items-center mb-2">
+                <span class="text-xs mb-1">Ação</span>
+                <div class="xyba-cross">
+                  <button
+                    class="xyba-btn-y bg-yellow-400 hover:bg-yellow-500 text-black font-bold rounded"
+                    style="grid-area: y"
+                    data-action="y"
+                  >
+                    Y
+                  </button>
+                  <button
+                    class="xyba-btn-x bg-blue-600 hover:bg-blue-700 text-white font-bold rounded"
+                    style="grid-area: x"
+                    data-action="x"
+                  >
+                    X
+                  </button>
+                  <button
+                    class="xyba-btn-a bg-green-600 hover:bg-green-700 text-white font-bold rounded"
+                    style="grid-area: a"
+                    data-action="a"
+                  >
+                    A
+                  </button>
+                  <button
+                    class="xyba-btn-b bg-red-600 hover:bg-red-700 text-white font-bold rounded"
+                    style="grid-area: b"
+                    data-action="b"
+                  >
+                    B
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Start e Select -->
+          <div class="controls-bottom">
+            <button
+              class="bg-gray-700 text-white font-bold py-2 px-6 rounded"
+              data-action="back"
             >
-                <source src="/hls/stream.m3u8" type="application/x-mpegURL">
-            </video>
+              Select
+            </button>
+            <button
+              class="bg-gray-700 text-white font-bold py-2 px-6 rounded"
+              data-action="start"
+            >
+              Start
+            </button>
+          </div>
         </div>
+      </div>
     </div>
 
     <script src="https://vjs.zencdn.net/8.5.2/video.js"></script>
-
     <script>
-        var player = videojs('video-player');
-        
-        player.ready(function() {
-            if (player.hls) {
-                player.hls.liveSyncDurationCount = 1; 
-                player.hls.liveSyncDuration = 0;
-            }
+      var player = videojs("video-player");
+      player.ready(function () {
+        if (player.hls) {
+          player.hls.liveSyncDurationCount = 1;
+          player.hls.liveSyncDuration = 0;
+        }
+      });
+
+      // WebSocket para gamepad (binário)
+      let ws;
+      const wsStatus = document.getElementById("ws-status");
+
+      ws = new WebSocket("ws://192.168.11.13:8765");
+      ws.binaryType = "arraybuffer";
+      ws.onopen = () => (wsStatus.textContent = "Gamepad conectado!");
+      ws.onclose = () => (
+        (wsStatus.textContent = "Gamepad desconectado!"),
+        alert("Conexão com o gamepad perdida!")
+      );
+      ws.onerror = () => (wsStatus.textContent = "Erro na conexão!");
+      ws.onmessage = (msg) => {};
+
+      // Funções de envio binário
+      function sendAnalog(axis, value) {
+        let buf = new ArrayBuffer(4);
+        let view = new DataView(buf);
+        view.setUint8(0, 0); // tipo = analógico
+        view.setUint8(1, axis);
+        view.setInt16(2, Math.round(value * 32767), true);
+        ws.send(buf);
+      }
+
+      function sendButton(id, pressed) {
+        let buf = new ArrayBuffer(4);
+        let view = new DataView(buf);
+        view.setUint8(0, 1); // tipo = botão
+        view.setUint8(1, id);
+        view.setInt16(2, pressed ? 1 : 0, true);
+        ws.send(buf);
+      }
+
+      function sendTrigger(id, value) {
+        let buf = new ArrayBuffer(4);
+        let view = new DataView(buf);
+        view.setUint8(0, 2); // tipo = gatilho
+        view.setUint8(1, id);
+        view.setInt16(2, Math.round(value * 32767), true);
+        ws.send(buf);
+      }
+
+      // Mapeamento dos botões
+      const buttonMap = {
+        a: 0,
+        b: 1,
+        x: 2,
+        y: 3,
+        lb: 4,
+        rb: 5,
+        back: 6,
+        start: 7,
+        ls: 8,
+        rs: 9,
+        dpad_up: 10,
+        dpad_down: 11,
+        dpad_left: 12,
+        dpad_right: 13,
+      };
+
+      // Botões
+      document
+        .querySelectorAll(".overlay-controls button[data-action]")
+        .forEach((btn) => {
+          const id = buttonMap[btn.dataset.action];
+          if (id === undefined) return;
+          btn.addEventListener("mousedown", () => {
+            if (ws && ws.readyState === 1) sendButton(id, 1);
+          });
+          btn.addEventListener("mouseup", () => {
+            if (ws && ws.readyState === 1) sendButton(id, 0);
+          });
+          btn.addEventListener(
+            "touchstart",
+            (e) => {
+              if (ws && ws.readyState === 1) sendButton(id, 1);
+              e.preventDefault();
+            },
+            { passive: false }
+          );
+          btn.addEventListener(
+            "touchend",
+            (e) => {
+              if (ws && ws.readyState === 1) sendButton(id, 0);
+              e.preventDefault();
+            },
+            { passive: false }
+          );
         });
+
+      // Triggers
+      const triggerMap = { lt: 0, rt: 1 };
+      ["lt", "rt"].forEach((id) => {
+        const el = document.getElementById(id);
+        el.addEventListener("input", () => {
+          if (ws && ws.readyState === 1)
+            sendTrigger(triggerMap[id], parseFloat(el.value));
+        });
+      });
+
+      // Joystick virtual
+      function setupStick(stickId, knobId, axisX, axisY) {
+        const stick = document.getElementById(stickId);
+        const knob = document.getElementById(knobId);
+        const size = 120,
+          knobSize = 40;
+        const radius = (size - knobSize) / 2;
+        let dragging = false,
+          dragId = null;
+
+        function setKnob(x, y) {
+          knob.style.left = radius + x * radius + "px";
+          knob.style.top = radius - y * radius + "px";
+        }
+
+        function send(x, y) {
+          if (ws && ws.readyState === 1) {
+            sendAnalog(axisX, x);
+            sendAnalog(axisY, y);
+          }
+        }
+
+        function handle(clientX, clientY) {
+          const rect = stick.getBoundingClientRect();
+          let x = (clientX - rect.left - size / 2) / radius;
+          let y = (clientY - rect.top - size / 2) / radius;
+          x = Math.max(-1, Math.min(1, x));
+          y = Math.max(-1, Math.min(1, -y));
+          setKnob(x, y);
+          send(x, y);
+        }
+
+        function reset() {
+          setKnob(0, 0);
+          send(0, 0);
+        }
+
+        stick.addEventListener("mousedown", (e) => {
+          dragging = true;
+          handle(e.clientX, e.clientY);
+        });
+        document.addEventListener("mousemove", (e) => {
+          if (dragging) handle(e.clientX, e.clientY);
+        });
+        document.addEventListener("mouseup", () => {
+          if (dragging) {
+            dragging = false;
+            reset();
+          }
+        });
+
+        stick.addEventListener(
+          "touchstart",
+          (e) => {
+            if (dragId !== null) return;
+            const touch = e.changedTouches[0];
+            dragId = touch.identifier;
+            dragging = true;
+            handle(touch.clientX, touch.clientY);
+            e.preventDefault();
+          },
+          { passive: false }
+        );
+
+        document.addEventListener(
+          "touchmove",
+          (e) => {
+            if (!dragging || dragId === null) return;
+            for (let touch of e.changedTouches) {
+              if (touch.identifier === dragId) {
+                handle(touch.clientX, touch.clientY);
+                e.preventDefault();
+              }
+            }
+          },
+          { passive: false }
+        );
+
+        document.addEventListener(
+          "touchend",
+          (e) => {
+            if (!dragging || dragId === null) return;
+            for (let touch of e.changedTouches) {
+              if (touch.identifier === dragId) {
+                dragging = false;
+                dragId = null;
+                reset();
+                e.preventDefault();
+              }
+            }
+          },
+          { passive: false }
+        );
+
+        reset();
+      }
+
+      // Axis IDs: 0=lx,1=ly,2=rx,3=ry
+      setupStick("left-stick", "left-knob", 0, 1);
+      setupStick("right-stick", "right-knob", 2, 3);
     </script>
-</body>
+  </body>
 </html>

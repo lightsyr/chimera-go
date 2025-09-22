@@ -2,3 +2,4 @@ websockets
 pygame
 pyautogui
 numpy
+vgamepad
