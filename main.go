@@ -57,7 +57,7 @@ func main() {
 		http.ServeFile(w, r, filePath)
 	})
 
-	log.Println("Servidor iniciado na porta 8080. Acesse http://192.168.11.11:8080")
+	log.Println("Servidor iniciado na porta 8080. Acesse http://172.26.1.103:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
@@ -68,7 +68,7 @@ func startFFmpeg() {
 
 	log.Println("Iniciando o jogo...")
 	gamePath := "C:/Program Files (x86)/Steam/steamapps/common/Salt and Sanctuary/salt.exe"
-	cmdGame := exec.Command("cmd.exe", "/C", "start", gamePath)
+	cmdGame := exec.Command(gamePath)
 	if err := cmdGame.Start(); err != nil {
 		log.Fatalf("Erro ao iniciar o jogo: %v", err)
 	}
@@ -80,14 +80,13 @@ func startFFmpeg() {
 	cmdFFmpeg := exec.Command("ffmpeg",
 		"-f", "dshow",
 		"-i", "video=screen-capture-recorder",
-		"-c:v", "h264_amf",
-		"-usage", "lowlatency", // Novo: Prioridade máxima para latência
-		"-g", "30", // Novo: Reduz o GOP para 1 segundo
-		"-bf", "0", // Novo: Remove B-frames
-		"-qp", "15",
+		"-tune", "zerolatency",
+		"-c:v", "h264_qsv",
+		"-g", "1", // Keyframe em todo frame
+		//"-bf", "0", // Sem B-frames
 		"-f", "hls",
-		"-hls_list_size", "3",
-		"-hls_time", "0.1",
+		"-hls_list_size", "6",
+		"-hls_time", "0.3",
 		"hls/stream.m3u8")
 
 	stderr, err := cmdFFmpeg.StderrPipe()
