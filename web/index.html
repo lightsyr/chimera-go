@@ -1,52 +1,347 @@
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Chimera - Game Stream</title>
     <style>
         /* --- ESTILOS GERAIS E DE LAYOUT --- */
-        body, html { margin: 0; padding: 0; background: #000; overflow: hidden; font-family: sans-serif; touch-action: none; }
-        #video-container { position: relative; width: 100vdvw; height: 100dvh; cursor: pointer; }
-        #video-player { width: 100%; height: 100%; object-fit: cover; background: #000; }
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            overflow: hidden;
+            font-family: sans-serif;
+            touch-action: none;
+        }
+
+        #video-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #video-player {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background: #000;
+        }
 
         /* --- ESTILOS DO OVERLAY DE CONTROLES --- */
-        .overlay-controls { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; display: none; flex-direction: column; justify-content: space-between; align-items: stretch; }
-        .overlay-controls * { pointer-events: auto; }
-        .status-bar { display: flex; justify-content: center; gap: 1rem; padding: 0.5rem; background: rgba(0, 0, 0, 0.3); color: #D1D5DB; font-size: 0.875rem; }
-        .main-controls-container { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 1.5rem; }
-        .control-group { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
-        .label { color: white; font-size: 0.75rem; margin-bottom: 0.25rem; }
-        .joystick-area { width: 100px; height: 100px; background: rgba(55, 65, 81, 0.46); border-radius: 50%; position: relative; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
-        .joystick-knob { width: 40px; height: 40px; border-radius: 50%; position: absolute; pointer-events: none; box-shadow: 0 0 10px rgba(0, 0, 0, 0.5); }
-        #left-knob { background: rgba(59, 130, 246, 0.66); }
-        #right-knob { background: rgba(34, 197, 94, 0.66); }
-        .game-button { width: 48px; height: 48px; border-radius: 50%; font-weight: bold; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); border: none; color: white; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; cursor: pointer; }
-        .dpad { display: grid; width: 154px; height: 154px; grid-template-areas: ". up ." "left . right" ". down ."; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; align-items: center; justify-items: center; }
-        .dpad .btn-up { grid-area: up; }
-        .dpad .btn-left { grid-area: left; }
-        .dpad .btn-right { grid-area: right; }
-        .dpad .btn-down { grid-area: down; }
-        .dpad button { background: rgba(55, 65, 81, 0.53); }
-        .xyba-cross { width: 154px; height: 154px; display: grid; grid-template-areas: ". y ." "x a b" ". . ."; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; align-items: center; justify-items: center; }
-        .xyba-cross .btn-y { grid-area: y; background-color: #FBBF24; color: black; }
-        .xyba-cross .btn-x { grid-area: x; background-color: #2563EB; color: white; }
-        .xyba-cross .btn-a { grid-area: a; background-color: #16A34A; color: white; }
-        .xyba-cross .btn-b { grid-area: b; background-color: #DC2626; color: white; }
-        .shoulder-buttons { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-        .shoulder-buttons button { width: 60px; height: 35px; border-radius: 8px; background: rgba(55, 65, 81, 0.53); font-weight: bold; border: none; color: white; }
-        .controls-bottom { display: flex; justify-content: center; gap: 1rem; padding-bottom: 0.5rem; }
-        .controls-bottom button { background: rgba(55, 65, 81, 0.66); color: white; font-weight: bold; border-radius: 8px; padding: 0.5rem 1rem; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); border: none; }
+        .overlay-controls {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            display: none;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: stretch;
+            padding: 0.25rem;
+            box-sizing: border-box;
+        }
+
+        .overlay-controls * {
+            pointer-events: auto;
+        }
+
+        .status-bar {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.25rem;
+            background: rgba(0, 0, 0, 0.3);
+            color: #D1D5DB;
+            font-size: 0.7rem;
+        }
+
+        .main-controls-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-grow: 1;
+            padding: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+            flex: 1 1 40%;
+            margin-bottom: 0.25rem;
+        }
+
+        .label {
+            color: white;
+            font-size: 0.65rem;
+            margin-bottom: 0.2rem;
+        }
+
+        .joystick-area {
+            width: 60px;
+            height: 60px;
+            background: rgba(55, 65, 81, 0.46);
+            border-radius: 50%;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .joystick-knob {
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            position: absolute;
+            pointer-events: none;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+        }
+
+        #left-knob {
+            background: rgba(59, 130, 246, 0.66);
+        }
+
+        #right-knob {
+            background: rgba(34, 197, 94, 0.66);
+        }
+
+        .game-button {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            font-weight: bold;
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+            border: none;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        .dpad {
+            display: grid;
+            width: 100px;
+            height: 100px;
+            grid-template-areas: ". up ." "left . right" ". down .";
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr 1fr;
+            align-items: center;
+            justify-items: center;
+        }
+
+        .dpad .btn-up {
+            grid-area: up;
+        }
+
+        .dpad .btn-left {
+            grid-area: left;
+        }
+
+        .dpad .btn-right {
+            grid-area: right;
+        }
+
+        .dpad .btn-down {
+            grid-area: down;
+        }
+
+        .dpad button {
+            background: rgba(55, 65, 81, 0.53);
+        }
+
+        .xyba-cross {
+            width: 100px;
+            height: 100px;
+            display: grid;
+            grid-template-areas: ". y ." "x a b" ". . .";
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr 1fr;
+            align-items: center;
+            justify-items: center;
+        }
+
+        .xyba-cross .btn-y {
+            grid-area: y;
+            background-color: #FBBF24;
+            color: black;
+        }
+
+        .xyba-cross .btn-x {
+            grid-area: x;
+            background-color: #2563EB;
+            color: white;
+        }
+
+        .xyba-cross .btn-a {
+            grid-area: a;
+            background-color: #16A34A;
+            color: white;
+        }
+
+        .xyba-cross .btn-b {
+            grid-area: b;
+            background-color: #DC2626;
+            color: white;
+        }
+
+        .shoulder-buttons {
+            display: flex;
+            gap: 0.3rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .shoulder-buttons button {
+            width: 45px;
+            height: 28px;
+            border-radius: 6px;
+            background: rgba(55, 65, 81, 0.53);
+            font-weight: bold;
+            border: none;
+            color: white;
+            font-size: 0.7rem;
+        }
+
+        .controls-bottom {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            padding-bottom: 0.25rem;
+        }
+
+        .controls-bottom button {
+            background: rgba(55, 65, 81, 0.66);
+            color: white;
+            font-weight: bold;
+            border-radius: 6px;
+            padding: 0.3rem 0.5rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+            font-size: 0.75rem;
+            border: none;
+        }
+
+        /* --- AJUSTES PARA TELAS PEQUENAS --- */
+        @media (max-width: 400px),
+        (max-height: 700px) {
+            .main-controls-container {
+                flex-wrap: wrap;
+                justify-content: space-around;
+            }
+
+            .control-group {
+                flex: 1 1 45%;
+                margin-bottom: 0.3rem;
+            }
+
+            .joystick-area {
+                width: 50px;
+                height: 50px;
+            }
+
+            .joystick-knob {
+                width: 20px;
+                height: 20px;
+            }
+
+            .dpad,
+            .xyba-cross {
+                width: 80px;
+                height: 80px;
+            }
+
+            .game-button {
+                width: 32px;
+                height: 32px;
+                font-size: 0.75rem;
+            }
+
+            .shoulder-buttons button {
+                width: 40px;
+                height: 25px;
+                font-size: 0.65rem;
+            }
+
+            .controls-bottom button {
+                padding: 0.25rem 0.5rem;
+                font-size: 0.7rem;
+            }
+
+            .status-bar {
+                font-size: 0.65rem;
+                padding: 0.2rem;
+            }
+        }
+
+        /* Ajuste para landscape */
+        @media (orientation: landscape) {
+            .main-controls-container {
+                flex-direction: row;
+                flex-wrap: wrap;
+                justify-content: space-between;
+            }
+        }
     </style>
 </head>
+
 <body>
     <div id="video-container">
-        <video id="video-player" muted playsinline controls>
+        <video id="video-player" muted playsinline>
         </video>
         <div class="overlay-controls">
-            <div class="status-bar"><div id="ws-status">WS: Ocioso</div><div id="rtc-status">WebRTC: Ocioso</div></div>
-            <div class="main-controls-container"><div class="control-group"><div class="shoulder-buttons"><button data-action="l1">L1</button><button data-action="l2" data-type="axis">L2</button></div><div class="control-group"><span class="label">Left Stick</span><div id="left-stick" class="joystick-area"><div id="left-knob" class="joystick-knob"></div></div></div><div class="control-group"><span class="label">D-Pad</span><div class="dpad"><button data-action="dpad_up" class="game-button btn-up">▲</button><button data-action="dpad_left" class="game-button btn-left">◀</button><button data-action="dpad_right" class="game-button btn-right">▶</button><button data-action="dpad_down" class="game-button btn-down">▼</button></div></div></div><div class="control-group"><div class="shoulder-buttons"><button data-action="r1">R1</button><button data-action="r2" data-type="axis">R2</button></div><div class="control-group"><span class="label">Right Stick</span><div id="right-stick" class="joystick-area"><div id="right-knob" class="joystick-knob"></div></div></div><div class="control-group"><span class="label">Ação</span><div class="xyba-cross"><button class="game-button btn-y" data-action="y">Y</button><button class="game-button btn-x" data-action="x">X</button><button class="game-button btn-a" data-action="a">A</button><button class="game-button btn-b" data-action="b">B</button></div></div></div></div>
-            <div class="controls-bottom"><button data-action="back">Select</button><button data-action="start">Start</button></div>
+            <div class="status-bar">
+                <div id="ws-status">WS: Ocioso</div>
+                <div id="rtc-status">WebRTC: Ocioso</div>
+            </div>
+            <div class="main-controls-container">
+                <div class="control-group">
+                    <div class="shoulder-buttons"><button data-action="l1">L1</button><button data-action="l2"
+                            data-type="axis">L2</button></div>
+                    <div class="control-group"><span class="label">Left Stick</span>
+                        <div id="left-stick" class="joystick-area">
+                            <div id="left-knob" class="joystick-knob"></div>
+                        </div>
+                    </div>
+                    <div class="control-group"><span class="label">D-Pad</span>
+                        <div class="dpad"><button data-action="dpad_up" class="game-button btn-up">▲</button><button
+                                data-action="dpad_left" class="game-button btn-left">◀</button><button
+                                data-action="dpad_right" class="game-button btn-right">▶</button><button
+                                data-action="dpad_down" class="game-button btn-down">▼</button></div>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <div class="shoulder-buttons"><button data-action="r1">R1</button><button data-action="r2"
+                            data-type="axis">R2</button></div>
+                    <div class="control-group"><span class="label">Right Stick</span>
+                        <div id="right-stick" class="joystick-area">
+                            <div id="right-knob" class="joystick-knob"></div>
+                        </div>
+                    </div>
+                    <div class="control-group"><span class="label">Ação</span>
+                        <div class="xyba-cross"><button class="game-button btn-y" data-action="y">Y</button><button
+                                class="game-button btn-x" data-action="x">X</button><button class="game-button btn-a"
+                                data-action="a">A</button><button class="game-button btn-b" data-action="b">B</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="controls-bottom"><button data-action="back">Select</button><button
+                    data-action="start">Start</button></div>
         </div>
     </div>
 
@@ -62,11 +357,11 @@
 
         function setupOnScreenControls(sendBinary, floatToInt16) {
             console.log("Dispositivo de toque detectado. Habilitando controles na tela.");
-            controlsOverlay.style.display = 'flex'; 
+            controlsOverlay.style.display = 'flex';
 
             const buttonMap = { a: 0, b: 1, x: 2, y: 3, l1: 4, r1: 5, back: 6, start: 7, dpad_up: 10, dpad_down: 11, dpad_left: 12, dpad_right: 13, l2: 4, r2: 5 };
             document.querySelectorAll('button[data-action]').forEach(btn => { const action = btn.dataset.action; const buttonType = btn.dataset.type; if (buttonType === 'axis') { const axisId = buttonMap[action]; const sendPress = () => sendBinary(0, axisId, 32767); const sendRelease = () => sendBinary(0, axisId, 0); btn.addEventListener('mousedown', sendPress); btn.addEventListener('mouseup', sendRelease); btn.addEventListener('mouseleave', sendRelease); btn.addEventListener('touchstart', e => { e.preventDefault(); sendPress(); }, { passive: false }); btn.addEventListener('touchend', e => { e.preventDefault(); sendRelease(); }, { passive: false }); } else { const buttonId = buttonMap[action]; if (buttonId === undefined) return; const sendPress = () => sendBinary(1, buttonId, 1); const sendRelease = () => sendBinary(1, buttonId, 0); btn.addEventListener('mousedown', sendPress); btn.addEventListener('mouseup', sendRelease); btn.addEventListener('mouseleave', sendRelease); btn.addEventListener('touchstart', e => { e.preventDefault(); sendPress(); }, { passive: false }); btn.addEventListener('touchend', e => { e.preventDefault(); sendRelease(); }, { passive: false }); } });
-            function setupStick(stickId, knobId, axisXId, axisYId) { const stick = document.getElementById(stickId); if (!stick) return; const knob = document.getElementById(knobId); const size = 100, knobSize = 40, radius = (size - knobSize) / 2; let dragging = false, dragId = null; function setKnobPosition(x, y) { knob.style.left = (radius + x * radius) + "px"; knob.style.top = (radius - y * radius) + "px"; } function sendAxes(x, y) { sendBinary(0, axisXId, floatToInt16(x)); sendBinary(0, axisYId, floatToInt16(y)); } function handleMove(clientX, clientY) { const rect = stick.getBoundingClientRect(); let x = (clientX - rect.left - size / 2) / (size / 2); let y = (clientY - rect.top - size / 2) / (size / 2); const magnitude = Math.sqrt(x*x + y*y); if (magnitude > 1) { x /= magnitude; y /= magnitude; } setKnobPosition(x, -y); sendAxes(x, -y); } function reset() { dragging = false; dragId = null; setKnobPosition(0, 0); sendAxes(0, 0); } stick.addEventListener('mousedown', e => { dragging = true; handleMove(e.clientX, e.clientY); }); document.addEventListener('mousemove', e => { if (dragging) handleMove(e.clientX, e.clientY); }); document.addEventListener('mouseup', () => { if (dragging) reset(); }); stick.addEventListener('touchstart', e => { if (dragId === null) { e.preventDefault(); const touch = e.changedTouches[0]; dragId = touch.identifier; handleMove(touch.clientX, touch.clientY); } }, { passive: false }); document.addEventListener('touchmove', e => { if (dragId !== null) { for (let touch of e.changedTouches) { if (touch.identifier === dragId) { e.preventDefault(); handleMove(touch.clientX, touch.clientY); break; } } } }, { passive: false }); document.addEventListener('touchend', e => { if (dragId !== null) { for (let touch of e.changedTouches) { if (touch.identifier === dragId) { e.preventDefault(); reset(); break; } } } }, { passive: false }); reset(); }
+            function setupStick(stickId, knobId, axisXId, axisYId) { const stick = document.getElementById(stickId); if (!stick) return; const knob = document.getElementById(knobId); const size = 100, knobSize = 40, radius = (size - knobSize) / 2; let dragging = false, dragId = null; function setKnobPosition(x, y) { knob.style.left = (radius + x * radius) + "px"; knob.style.top = (radius - y * radius) + "px"; } function sendAxes(x, y) { sendBinary(0, axisXId, floatToInt16(x)); sendBinary(0, axisYId, floatToInt16(y)); } function handleMove(clientX, clientY) { const rect = stick.getBoundingClientRect(); let x = (clientX - rect.left - size / 2) / (size / 2); let y = (clientY - rect.top - size / 2) / (size / 2); const magnitude = Math.sqrt(x * x + y * y); if (magnitude > 1) { x /= magnitude; y /= magnitude; } setKnobPosition(x, -y); sendAxes(x, -y); } function reset() { dragging = false; dragId = null; setKnobPosition(0, 0); sendAxes(0, 0); } stick.addEventListener('mousedown', e => { dragging = true; handleMove(e.clientX, e.clientY); }); document.addEventListener('mousemove', e => { if (dragging) handleMove(e.clientX, e.clientY); }); document.addEventListener('mouseup', () => { if (dragging) reset(); }); stick.addEventListener('touchstart', e => { if (dragId === null) { e.preventDefault(); const touch = e.changedTouches[0]; dragId = touch.identifier; handleMove(touch.clientX, touch.clientY); } }, { passive: false }); document.addEventListener('touchmove', e => { if (dragId !== null) { for (let touch of e.changedTouches) { if (touch.identifier === dragId) { e.preventDefault(); handleMove(touch.clientX, touch.clientY); break; } } } }, { passive: false }); document.addEventListener('touchend', e => { if (dragId !== null) { for (let touch of e.changedTouches) { if (touch.identifier === dragId) { e.preventDefault(); reset(); break; } } } }, { passive: false }); reset(); }
             setupStick("left-stick", "left-knob", 0, 1);
             setupStick("right-stick", "right-knob", 2, 3);
         }
@@ -82,14 +377,14 @@
                 if (!gamepad) return;
                 const deadzone = 0.1;
                 gamepad.axes.forEach((value, i) => { const prevValue = previousGamepadState.axes?.[i] || 0; if (Math.abs(value) < deadzone) value = 0; let finalValue = value; if (i === 1 || i === 3) { finalValue = -value; } if (value !== prevValue) { sendBinary(0, i, floatToInt16(finalValue)); } });
-                gamepad.buttons.forEach((button, i) => { const wasPressed = previousGamepadState.buttons?.[i]?.pressed || false; const isPressed = button.pressed; const value = button.value; const prevValue = previousGamepadState.buttons?.[i]?.value || 0; if (i === 6 || i === 7) { if (value !== prevValue) { const axisId = (i === 6) ? 4 : 5; sendBinary(0, axisId, floatToInt16(value)); } } else { if (isPressed !== wasPressed) { let buttonId = -1; switch(i) { case 0: buttonId = 0; break; case 1: buttonId = 1; break; case 2: buttonId = 2; break; case 3: buttonId = 3; break; case 4: buttonId = 4; break; case 5: buttonId = 5; break; case 8: buttonId = 6; break; case 9: buttonId = 7; break; case 10: buttonId = 8; break; case 11: buttonId = 9; break; case 12: buttonId = 10; break; case 13: buttonId = 11; break; case 14: buttonId = 12; break; case 15: buttonId = 13; break; } if (buttonId !== -1) { sendBinary(1, buttonId, isPressed ? 1 : 0); } } } });
+                gamepad.buttons.forEach((button, i) => { const wasPressed = previousGamepadState.buttons?.[i]?.pressed || false; const isPressed = button.pressed; const value = button.value; const prevValue = previousGamepadState.buttons?.[i]?.value || 0; if (i === 6 || i === 7) { if (value !== prevValue) { const axisId = (i === 6) ? 4 : 5; sendBinary(0, axisId, floatToInt16(value)); } } else { if (isPressed !== wasPressed) { let buttonId = -1; switch (i) { case 0: buttonId = 0; break; case 1: buttonId = 1; break; case 2: buttonId = 2; break; case 3: buttonId = 3; break; case 4: buttonId = 4; break; case 5: buttonId = 5; break; case 8: buttonId = 6; break; case 9: buttonId = 7; break; case 10: buttonId = 8; break; case 11: buttonId = 9; break; case 12: buttonId = 10; break; case 13: buttonId = 11; break; case 14: buttonId = 12; break; case 15: buttonId = 13; break; } if (buttonId !== -1) { sendBinary(1, buttonId, isPressed ? 1 : 0); } } } });
                 previousGamepadState = { axes: [...gamepad.axes], buttons: gamepad.buttons.map(b => ({ pressed: b.pressed, value: b.value })) };
                 animationFrameId = requestAnimationFrame(gameLoop);
             }
             window.addEventListener("gamepadconnected", (e) => { console.log(`Gamepad conectado: ${e.gamepad.id}.`); if (gamepadIndex === null) { gamepadIndex = e.gamepad.index; gameLoop(); } });
             window.addEventListener("gamepaddisconnected", (e) => { console.log(`Gamepad desconectado: ${e.gamepad.id}.`); if (gamepadIndex === e.gamepad.index) { gamepadIndex = null; cancelAnimationFrame(animationFrameId); } });
         }
-        
+
         function initializeApp() {
             alert("Primeiro clique detectado. Inicializando o sistema...");
             videoEl.controls = false;
@@ -102,13 +397,13 @@
             const wsUrl = `ws://${window.location.hostname}:9000`;
             const ws = new WebSocket(wsUrl);
             ws.binaryType = "arraybuffer";
-            ws.onopen = () => { if(wsStatusEl) wsStatusEl.textContent = "WS: Conectado"; };
-            ws.onclose = () => { if(wsStatusEl) wsStatusEl.textContent = "WS: Desconectado"; };
-            ws.onerror = () => { if(wsStatusEl) wsStatusEl.textContent = "WS: Erro"; };
-            
+            ws.onopen = () => { if (wsStatusEl) wsStatusEl.textContent = "WS: Conectado"; };
+            ws.onclose = () => { if (wsStatusEl) wsStatusEl.textContent = "WS: Desconectado"; };
+            ws.onerror = () => { if (wsStatusEl) wsStatusEl.textContent = "WS: Erro"; };
+
             function sendBinary(tipo, id, value) { if (ws.readyState !== WebSocket.OPEN) return; const buf = new ArrayBuffer(4); const view = new DataView(buf); view.setUint8(0, tipo); view.setUint8(1, id); view.setInt16(2, value, true); ws.send(buf); }
             function floatToInt16(v) { return Math.round(Math.max(-1, Math.min(1, v)) * 32767); }
-            
+
             // --- DETECÇÃO DE TOQUE E ROTEAMENTO ---
             if (isTouchDevice()) {
                 setupOnScreenControls(sendBinary, floatToInt16);
@@ -116,17 +411,18 @@
                 setupGamepadAPI(sendBinary, floatToInt16);
             }
 
-            const configuration = { iceServers: [ { urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' } ] };
+            const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
             const pc = new RTCPeerConnection(configuration);
             pc.addTransceiver('video', { direction: 'recvonly' });
-            pc.onconnectionstatechange = () => { if(rtcStatusEl) rtcStatusEl.textContent = `WebRTC: ${pc.connectionState}`; };
+            pc.onconnectionstatechange = () => { if (rtcStatusEl) rtcStatusEl.textContent = `WebRTC: ${pc.connectionState}`; };
             pc.ontrack = e => { if (videoEl.srcObject !== e.streams[0]) { videoEl.srcObject = e.streams[0]; videoEl.play().catch(err => console.error("Erro ao tocar vídeo no ontrack:", err)); } };
-            async function negotiate() { const iceGatheringPromise = new Promise(resolve => { pc.onicecandidate = e => e.candidate === null && resolve(); }); const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await iceGatheringPromise; if(rtcStatusEl) rtcStatusEl.textContent = 'WebRTC: Negociando...'; const finalOffer = pc.localDescription; const res = await fetch('/offer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sdp: finalOffer.sdp, codec: "qsvh264dec", width: 1920, height: 1080, fps: 60 }) }); if (!res.ok) { if(rtcStatusEl) rtcStatusEl.textContent = `WebRTC: Erro (${res.status})`; return; } const answer = await res.json(); await pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp }); }
-            negotiate().catch(err => { console.error("Falha na negociação WebRTC:", err); if(rtcStatusEl) rtcStatusEl.textContent = 'WebRTC: Falha Crítica'; });
+            async function negotiate() { const iceGatheringPromise = new Promise(resolve => { pc.onicecandidate = e => e.candidate === null && resolve(); }); const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await iceGatheringPromise; if (rtcStatusEl) rtcStatusEl.textContent = 'WebRTC: Negociando...'; const finalOffer = pc.localDescription; const res = await fetch('/offer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sdp: finalOffer.sdp, codec: "amfh264enc", width: 1920, height: 1080, fps: 60 }) }); if (!res.ok) { if (rtcStatusEl) rtcStatusEl.textContent = `WebRTC: Erro (${res.status})`; return; } const answer = await res.json(); await pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp }); }
+            negotiate().catch(err => { console.error("Falha na negociação WebRTC:", err); if (rtcStatusEl) rtcStatusEl.textContent = 'WebRTC: Falha Crítica'; });
         }
 
-      
+
         videoContainer.addEventListener('click', initializeApp, { once: true });
     </script>
 </body>
+
 </html>
