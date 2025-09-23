@@ -3,12 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chimera 0.1 Alpha</title>
+    <title>Chimera - WebRTC</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://vjs.zencdn.net/8.5.2/video-js.css" rel="stylesheet" />
     <style>
       body {
         background-color: #111827;
+        margin: 0;
+        overflow: hidden;
       }
       .joystick-area {
         width: 120px;
@@ -48,123 +49,15 @@
       .overlay-controls * {
         pointer-events: auto;
       }
-      .controls-row {
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-        align-items: center;
-        width: 100%;
-      }
-      .controls-triggers {
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-        width: 100%;
-        margin-bottom: 2vw;
-      }
-      .controls-triggers .triggers-group {
-        display: flex;
-        flex-direction: row;
-        gap: 2vw;
-      }
-      .controls-main {
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-        align-items: flex-end;
-        width: 100%;
-        flex: 1;
-      }
-      .controls-left,
-      .controls-right {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 2vw;
-      }
-      .controls-center {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 2vw;
-        flex: 1;
-      }
-      .dpad-row {
-        display: flex;
-        gap: 1vw;
-        justify-content: center;
-      }
-      .controls-bottom {
-        display: flex;
-        flex-direction: row;
-        justify-content: center;
-        align-items: center;
-        gap: 2vw;
-        margin-top: 2vw;
-      }
-      /* XYBA cruz layout */
       .xyba-cross {
         display: grid;
-        grid-template-areas:
-          ".   y   ."
-          "x   a   b"
-          ".   .   .";
+        grid-template-areas: ". y ." "x a b" ". . .";
         grid-template-columns: 40px 40px 40px;
         grid-template-rows: 40px 40px 40px;
         gap: 8px;
         justify-items: center;
         align-items: center;
         margin-top: 16px;
-      }
-      .xyba-btn-a {
-        grid-area: a;
-      }
-      .xyba-btn-b {
-        grid-area: b;
-      }
-      .xyba-btn-x {
-        grid-area: x;
-      }
-      .xyba-btn-y {
-        grid-area: y;
-      }
-      /* Fullscreen overlay always visible */
-      .fullscreen-overlay {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        z-index: 10000 !important;
-        pointer-events: none;
-        display: flex !important;
-        flex-direction: column !important;
-        justify-content: space-between !important;
-        align-items: stretch !important;
-        padding: 2vw !important;
-      }
-      .fullscreen-overlay * {
-        pointer-events: auto;
-      }
-      @media (orientation: landscape) {
-        .overlay-controls,
-        .fullscreen-overlay {
-          flex-direction: column !important;
-          justify-content: space-between !important;
-          align-items: stretch !important;
-          padding-bottom: 2vw !important;
-        }
-        .controls-row,
-        .controls-main,
-        .controls-triggers,
-        .controls-bottom {
-          flex-direction: row !important;
-          width: 100% !important;
-        }
-        .controls-left,
-        .controls-right {
-          gap: 2vw !important;
-        }
       }
     </style>
   </head>
@@ -179,21 +72,17 @@
         class="bg-gray-800 rounded-lg shadow-lg overflow-hidden relative"
         style="height: 100vh"
       >
+        <!-- Player WebRTC -->
         <video
           id="video-player"
-          class="video-js vjs-default-skin w-full h-full"
-          controls
-          preload="auto"
           autoplay
+          playsinline
           muted
-          data-setup="{}"
-          style="height: 100vh"
-        >
-          <source src="/hls/stream.m3u8" type="application/x-mpegURL" />
-        </video>
-        <!-- Overlay dos controles -->
+          style="width: 100%; height: 100vh; background: black"
+        ></video>
+
+        <!-- Overlay controles -->
         <div id="overlay-controls" class="overlay-controls">
-          <!-- Gatilhos -->
           <div class="controls-triggers controls-row">
             <div class="triggers-group">
               <div class="flex flex-col items-center">
@@ -236,7 +125,7 @@
               </div>
             </div>
           </div>
-          <!-- Analógicos, Dpad e Botões principais -->
+
           <div class="controls-main controls-row">
             <div class="controls-left">
               <div class="flex flex-col items-center mb-2">
@@ -281,9 +170,13 @@
                 </div>
               </div>
             </div>
+
             <div class="controls-center">
-              <div id="ws-status" class="mt-2 text-sm text-gray-400"></div>
+              <div id="ws-status" class="mt-2 text-sm text-gray-400">
+                Conectando...
+              </div>
             </div>
+
             <div class="controls-right">
               <div class="flex flex-col items-center mb-2">
                 <span class="text-xs mb-1">Right Stick</span>
@@ -330,7 +223,7 @@
               </div>
             </div>
           </div>
-          <!-- Start e Select -->
+
           <div class="controls-bottom">
             <button
               class="bg-gray-700 text-white font-bold py-2 px-6 rounded"
@@ -349,59 +242,46 @@
       </div>
     </div>
 
-    <script src="https://vjs.zencdn.net/8.5.2/video.js"></script>
     <script>
-      var player = videojs("video-player");
-      player.ready(function () {
-        if (player.hls) {
-          player.hls.liveSyncDurationCount = 1;
-          player.hls.liveSyncDuration = 0;
-        }
-      });
+      // --- WebRTC Setup ---
+      const pc = new RTCPeerConnection();
+      const dataChannel = pc.createDataChannel("gamepad");
+      dataChannel.binaryType = "arraybuffer";
 
-      // WebSocket para gamepad (binário)
-      let ws;
-      const wsStatus = document.getElementById("ws-status");
+      const videoEl = document.getElementById("video-player");
+      const statusEl = document.getElementById("ws-status");
 
-      ws = new WebSocket("ws://192.168.11.13:8765");
-      ws.binaryType = "arraybuffer";
-      ws.onopen = () => (wsStatus.textContent = "Gamepad conectado!");
-      ws.onclose = () => (
-        (wsStatus.textContent = "Gamepad desconectado!"),
-        alert("Conexão com o gamepad perdida!")
-      );
-      ws.onerror = () => (wsStatus.textContent = "Erro na conexão!");
-      ws.onmessage = (msg) => {};
+      // Adiciona tracks recebidos em um MediaStream
+      pc.ontrack = (event) => {
+        const ms = videoEl.srcObject || new MediaStream();
+        ms.addTrack(event.track);
+        videoEl.srcObject = ms;
+      };
 
-      // Funções de envio binário
-      function sendAnalog(axis, value) {
-        let buf = new ArrayBuffer(4);
-        let view = new DataView(buf);
-        view.setUint8(0, 0); // tipo = analógico
-        view.setUint8(1, axis);
-        view.setInt16(2, Math.round(value * 32767), true);
-        ws.send(buf);
-      }
+      // DataChannel
+      dataChannel.onopen = () =>
+        (statusEl.textContent = "DataChannel aberto (gamepad)");
+      dataChannel.onmessage = (ev) =>
+        console.log("Mensagem do servidor:", ev.data);
 
-      function sendButton(id, pressed) {
-        let buf = new ArrayBuffer(4);
-        let view = new DataView(buf);
-        view.setUint8(0, 1); // tipo = botão
+      // --- Envio binário ---
+      function sendBinary(tipo, id, int16value) {
+        if (dataChannel.readyState !== "open") return;
+        const buf = new ArrayBuffer(4);
+        const view = new DataView(buf);
+        view.setUint8(0, tipo);
         view.setUint8(1, id);
-        view.setInt16(2, pressed ? 1 : 0, true);
-        ws.send(buf);
+        view.setInt16(2, int16value, true);
+        dataChannel.send(buf);
       }
 
-      function sendTrigger(id, value) {
-        let buf = new ArrayBuffer(4);
-        let view = new DataView(buf);
-        view.setUint8(0, 2); // tipo = gatilho
-        view.setUint8(1, id);
-        view.setInt16(2, Math.round(value * 32767), true);
-        ws.send(buf);
+      function floatToInt16(v) {
+        return Math.round(Math.max(-1, Math.min(1, v)) * 32767);
+      }
+      function triggerToInt16(v) {
+        return Math.round(Math.max(0, Math.min(1, v)) * 32767);
       }
 
-      // Mapeamento dos botões
       const buttonMap = {
         a: 0,
         b: 1,
@@ -418,23 +298,20 @@
         dpad_left: 12,
         dpad_right: 13,
       };
+      const triggerMap = { lt: 0, rt: 1 };
 
-      // Botões
       document
         .querySelectorAll(".overlay-controls button[data-action]")
         .forEach((btn) => {
-          const id = buttonMap[btn.dataset.action];
+          const name = btn.dataset.action;
+          const id = buttonMap[name];
           if (id === undefined) return;
-          btn.addEventListener("mousedown", () => {
-            if (ws && ws.readyState === 1) sendButton(id, 1);
-          });
-          btn.addEventListener("mouseup", () => {
-            if (ws && ws.readyState === 1) sendButton(id, 0);
-          });
+          btn.addEventListener("mousedown", () => sendBinary(1, id, 1));
+          btn.addEventListener("mouseup", () => sendBinary(1, id, 0));
           btn.addEventListener(
             "touchstart",
             (e) => {
-              if (ws && ws.readyState === 1) sendButton(id, 1);
+              sendBinary(1, id, 1);
               e.preventDefault();
             },
             { passive: false }
@@ -442,30 +319,26 @@
           btn.addEventListener(
             "touchend",
             (e) => {
-              if (ws && ws.readyState === 1) sendButton(id, 0);
+              sendBinary(1, id, 0);
               e.preventDefault();
             },
             { passive: false }
           );
         });
 
-      // Triggers
-      const triggerMap = { lt: 0, rt: 1 };
-      ["lt", "rt"].forEach((id) => {
-        const el = document.getElementById(id);
-        el.addEventListener("input", () => {
-          if (ws && ws.readyState === 1)
-            sendTrigger(triggerMap[id], parseFloat(el.value));
-        });
+      ["lt", "rt"].forEach((k) => {
+        const el = document.getElementById(k);
+        el.addEventListener("input", () =>
+          sendBinary(2, triggerMap[k], triggerToInt16(parseFloat(el.value)))
+        );
       });
 
-      // Joystick virtual
-      function setupStick(stickId, knobId, axisX, axisY) {
+      function setupStick(stickId, knobId, axisXid, axisYid) {
         const stick = document.getElementById(stickId);
         const knob = document.getElementById(knobId);
         const size = 120,
-          knobSize = 40;
-        const radius = (size - knobSize) / 2;
+          knobSize = 40,
+          radius = (size - knobSize) / 2;
         let dragging = false,
           dragId = null;
 
@@ -473,12 +346,9 @@
           knob.style.left = radius + x * radius + "px";
           knob.style.top = radius - y * radius + "px";
         }
-
         function send(x, y) {
-          if (ws && ws.readyState === 1) {
-            sendAnalog(axisX, x);
-            sendAnalog(axisY, y);
-          }
+          sendBinary(0, axisXid, floatToInt16(x));
+          sendBinary(0, axisYid, floatToInt16(y));
         }
 
         function handle(clientX, clientY) {
@@ -503,7 +373,7 @@
         document.addEventListener("mousemove", (e) => {
           if (dragging) handle(e.clientX, e.clientY);
         });
-        document.addEventListener("mouseup", () => {
+        document.addEventListener("mouseup", (e) => {
           if (dragging) {
             dragging = false;
             reset();
@@ -514,35 +384,33 @@
           "touchstart",
           (e) => {
             if (dragId !== null) return;
-            const touch = e.changedTouches[0];
-            dragId = touch.identifier;
+            const t = e.changedTouches[0];
+            dragId = t.identifier;
             dragging = true;
-            handle(touch.clientX, touch.clientY);
+            handle(t.clientX, t.clientY);
             e.preventDefault();
           },
           { passive: false }
         );
-
         document.addEventListener(
           "touchmove",
           (e) => {
             if (!dragging || dragId === null) return;
-            for (let touch of e.changedTouches) {
-              if (touch.identifier === dragId) {
-                handle(touch.clientX, touch.clientY);
+            for (let t of e.changedTouches) {
+              if (t.identifier === dragId) {
+                handle(t.clientX, t.clientY);
                 e.preventDefault();
               }
             }
           },
           { passive: false }
         );
-
         document.addEventListener(
           "touchend",
           (e) => {
             if (!dragging || dragId === null) return;
-            for (let touch of e.changedTouches) {
-              if (touch.identifier === dragId) {
+            for (let t of e.changedTouches) {
+              if (t.identifier === dragId) {
                 dragging = false;
                 dragId = null;
                 reset();
@@ -556,9 +424,27 @@
         reset();
       }
 
-      // Axis IDs: 0=lx,1=ly,2=rx,3=ry
       setupStick("left-stick", "left-knob", 0, 1);
       setupStick("right-stick", "right-knob", 2, 3);
+
+      // --- SDP Offer/Answer ---
+      async function negotiate() {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        const LOCAL_IP = window.location.hostname; // pega IP/host do servidor que serviu o HTML
+        const res = await fetch(`http://${LOCAL_IP}:8080/offer`, {
+          // porta do Go
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "offer", sdp: offer.sdp }),
+        });
+
+        const j = await res.json();
+        await pc.setRemoteDescription({ type: "answer", sdp: j.sdp });
+      }
+
+      negotiate().catch(console.error);
     </script>
   </body>
 </html>

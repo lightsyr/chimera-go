@@ -1,125 +1,233 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"time"
+
+	"github.com/pion/rtp"
+	"github.com/pion/webrtc/v3"
 )
 
-// O nome do arquivo .m3u8 para verificar se está pronto
-const manifestFileName = "hls/stream.m3u8"
+func getLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return "127.0.0.1"
+}
+
+var (
+	udpListenIP   = getLocalIP()
+	udpListenPort = 5004
+)
+
+// SDPRequest recebe JSON do navegador
+type SDPRequest struct {
+	Type string `json:"type"`
+	SDP  string `json:"sdp"`
+}
 
 func main() {
-	// Adiciona flag para codec de vídeo
-	codec := flag.String("codec", "h264_qsv", "Codec de vídeo para FFmpeg (ex: h264_qsv, libx264, etc)")
+	// Flag para escolher codec via linha de comando
+	codec := flag.String("codec", "h264_qsv", "Codec de vídeo para FFmpeg (ex: h264_qsv, h264_nvenc, h264_amf)")
 	flag.Parse()
 
-	// Inicia o FFmpeg em uma goroutine separada
+	// Inicia FFmpeg para streaming RTP
 	go startFFmpeg(*codec)
 
-	// Inicia o servidor WebSocket Python em uma goroutine separada
+	// Inicia servidor Python WebSocket
 	go startPythonWebSocketServer()
 
-	// Espera até que o arquivo de manifesto HLS seja criado
-	log.Println("Aguardando o FFmpeg criar o arquivo de manifesto HLS...")
-	for {
-		if _, err := os.Stat(manifestFileName); err == nil {
-			log.Println("Manifesto encontrado! Iniciando o servidor web...")
-			break
-		}
-		time.Sleep(500 * time.Millisecond) // Espera 500ms antes de tentar novamente
-	}
+	// Servidor HTTP para HTML/JS
+	fs := http.FileServer(http.Dir("./web")) // index.html dentro de ./web
+	http.Handle("/", fs)
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
+	// Endpoint para receber offer do navegador
+	http.HandleFunc("/offer", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 			return
 		}
-		htmlContent, err := os.ReadFile("index.html")
-		if err != nil {
-			log.Printf("Erro ao ler index.html: %v", err)
-			http.Error(w, "Erro ao carregar a página", http.StatusInternalServerError)
+
+		var req SDPRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Erro ao parsear JSON", http.StatusBadRequest)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html")
-		w.Write(htmlContent)
-	})
 
-	http.HandleFunc("/hls/", func(w http.ResponseWriter, r *http.Request) {
-		filePath := filepath.Join("hls", r.URL.Path[len("/hls/"):])
-		var contentType string
-		switch filepath.Ext(filePath) {
-		case ".m3u8":
-			contentType = "application/x-mpegURL"
-		case ".ts":
-			contentType = "video/mp2t"
+		// Converte string para SDPType
+		var sdpType webrtc.SDPType
+		switch req.Type {
+		case "offer":
+			sdpType = webrtc.SDPTypeOffer
+		case "answer":
+			sdpType = webrtc.SDPTypeAnswer
 		default:
-			contentType = "application/octet-stream"
+			http.Error(w, "Tipo de SDP inválido", http.StatusBadRequest)
+			return
 		}
-		log.Printf("Servindo %s com Content-Type: %s", filePath, contentType)
-		w.Header().Set("Content-Type", contentType)
-		http.ServeFile(w, r, filePath)
+
+		offer := webrtc.SessionDescription{
+			Type: sdpType,
+			SDP:  req.SDP,
+		}
+
+		answer, err := handleOffer(offer)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Erro ao processar offer: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(answer)
 	})
 
-	log.Println("Servidor iniciado na porta 8080. Acesse http://192.168.11.13:8080")
+	log.Println("Servidor HTTP rodando em http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-// startFFmpeg agora recebe o codec como argumento
-func startFFmpeg(codec string) {
-	os.RemoveAll("hls")
-	os.Mkdir("hls", 0755)
-
-	log.Println("Iniciando FFmpeg para gerar o stream HLS...")
-	log.Println(codec)
-	cmdFFmpeg := exec.Command("ffmpeg",
-		"-f", "dshow",
-		"-i", "video=screen-capture-recorder",
-		"-c:v", codec,
-		"-g", "2", // Keyframe em todo frame
-		"-bf", "0", // Sem B-frames
-		"-f", "hls",
-		"-hls_list_size", "6",
-		"-hls_time", "0.2",
-		"hls/stream.m3u8")
-
-	stderr, err := cmdFFmpeg.StderrPipe()
+// handleOffer cria PeerConnection, track de vídeo e DataChannel
+func handleOffer(offer webrtc.SessionDescription) (webrtc.SessionDescription, error) {
+	// Cria PeerConnection
+	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
-		log.Fatalf("Erro ao obter o pipe de erro do FFmpeg: %v", err)
-	}
-	if err := cmdFFmpeg.Start(); err != nil {
-		log.Fatalf("Erro ao iniciar o FFmpeg: %v", err)
+		return webrtc.SessionDescription{}, err
 	}
 
+	// Track de vídeo
+	videoTrack, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264},
+		"video", "pion",
+	)
+	if err != nil {
+		return webrtc.SessionDescription{}, err
+	}
+
+	rtpSender, err := peerConnection.AddTrack(videoTrack)
+	if err != nil {
+		return webrtc.SessionDescription{}, err
+	}
+
+	// Ponte RTP → Track
+	go startRTPListener(videoTrack)
+
+	// Rotina para RTCP (mantém a conexão viva)
 	go func() {
-		log.SetPrefix("[FFmpeg ERR] ")
-		buf := make([]byte, 1024)
+		rtcpBuf := make([]byte, 1500)
 		for {
-			n, err := stderr.Read(buf)
-			if n > 0 {
-				log.Printf("%s", buf[:n])
-			}
-			if err != nil {
-				log.Printf("Pipe de erro do FFmpeg fechado: %v", err)
+			if _, _, err := rtpSender.Read(rtcpBuf); err != nil {
 				return
 			}
 		}
 	}()
 
-	cmdFFmpeg.Wait()
+	// DataChannel gamepad
+	dc, err := peerConnection.CreateDataChannel("gamepad", nil)
+	if err != nil {
+		return webrtc.SessionDescription{}, err
+	}
+	dc.OnOpen(func() { log.Println("DataChannel do gamepad aberto!") })
+	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+		log.Printf("Recebido do gamepad: %v\n", msg.Data)
+	})
+
+	// Set remote description (offer do navegador)
+	if err := peerConnection.SetRemoteDescription(offer); err != nil {
+		return webrtc.SessionDescription{}, err
+	}
+
+	// Cria answer
+	answer, err := peerConnection.CreateAnswer(nil)
+	if err != nil {
+		return webrtc.SessionDescription{}, err
+	}
+	if err := peerConnection.SetLocalDescription(answer); err != nil {
+		return webrtc.SessionDescription{}, err
+	}
+
+	return answer, nil
 }
 
-// Função para rodar o servidor WebSocket Python
-func startPythonWebSocketServer() {
-	cmd := exec.Command("python", "gamepad-ws-server/src/server.py")
+// startRTPListener lê RTP do FFmpeg e escreve no videoTrack
+func startRTPListener(videoTrack *webrtc.TrackLocalStaticRTP) {
+	addr := fmt.Sprintf("%s:%d", udpListenIP, udpListenPort)
+	conn, err := net.ListenPacket("udp", addr)
+	if err != nil {
+		log.Fatalf("Erro ao abrir listener UDP: %v", err)
+	}
+	defer conn.Close()
+	log.Printf("Ouvindo RTP em %s\n", addr)
+
+	buf := make([]byte, 1500)
+	for {
+		n, _, err := conn.ReadFrom(buf)
+		if err != nil {
+			log.Printf("Erro lendo RTP: %v", err)
+			continue
+		}
+
+		packet := &rtp.Packet{}
+		if err := packet.Unmarshal(buf[:n]); err != nil {
+			continue
+		}
+
+		if err := videoTrack.WriteRTP(packet); err != nil {
+			continue
+		}
+	}
+}
+
+// FFmpeg via GPU para enviar RTP
+func startFFmpeg(codec string) {
+	os.RemoveAll("tmp")
+	os.Mkdir("tmp", 0755)
+
+	cmd := exec.Command("ffmpeg",
+		"-f", "dshow",
+		"-i", "video=screen-capture-recorder",
+		"-c:v", codec,
+		"-preset", "llhp",
+		"-g", "15",
+		"-bf", "0",
+		"-pix_fmt", "yuv420p",
+		"-an",
+		"-f", "rtp",
+		fmt.Sprintf("rtp://%s:%d", udpListenIP, udpListenPort),
+	)
+
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	err := cmd.Start()
-	if err != nil {
+
+	if err := cmd.Start(); err != nil {
+		log.Fatalf("Erro ao iniciar FFmpeg: %v", err)
+	}
+	log.Printf("FFmpeg iniciado com codec %s, enviando RTP para %s:%d\n", codec, udpListenIP, udpListenPort)
+	cmd.Wait()
+}
+
+// Inicia servidor Python WebSocket
+func startPythonWebSocketServer() {
+	pythonPath := "python"
+	serverScript := "gamepad-ws-server/src/server.py"
+
+	cmd := exec.Command(pythonPath, serverScript)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
 		log.Printf("Erro ao iniciar o servidor WebSocket Python: %v", err)
 		return
 	}
