@@ -22,9 +22,10 @@ import (
 
 var (
 	pythonPath   = "python"
-	pythonScript = "./gamepad-ws-server/src/server.py"
+	pythonScript = "gamepad-ws-server/src/server.py" // Ajuste este caminho se o seu server.py estiver em outra pasta
 )
 
+// OfferRequest é a estrutura para receber os dados de configuração do frontend
 type OfferRequest struct {
 	SDP    string `json:"sdp"`
 	Codec  string `json:"codec"`
@@ -34,6 +35,7 @@ type OfferRequest struct {
 }
 
 func main() {
+	// --- Configuração do sistema de Log ---
 	logFile, err := os.OpenFile("chimera-go.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatalf("Erro ao abrir arquivo de log: %v", err)
@@ -44,6 +46,7 @@ func main() {
 	log.SetOutput(multiWriter)
 	log.Println("--- Servidor Iniciado ---")
 
+	// --- Gerenciamento do processo Python ---
 	cmdPython := exec.Command(pythonPath, pythonScript)
 	cmdPython.Stdout = multiWriter
 	cmdPython.Stderr = multiWriter
@@ -53,6 +56,7 @@ func main() {
 	}
 	log.Printf("[Go] server.py iniciado com PID: %d", cmdPython.Process.Pid)
 
+	// Garante que o processo Python será encerrado quando o programa Go fechar (Ctrl+C)
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -66,8 +70,9 @@ func main() {
 		os.Exit(0)
 	}()
 
+	// --- Servidor HTTP ---
 	httpAddr := ":8080"
-	http.Handle("/", http.FileServer(http.Dir("./web")))
+	http.Handle("/", http.FileServer(http.Dir("./web"))) // Serve os arquivos da pasta 'web'
 	http.HandleFunc("/offer", handleOffer)
 	log.Printf("[Go] Servidor HTTP rodando em http://localhost%s", httpAddr)
 	if err := http.ListenAndServe(httpAddr, nil); err != nil {
@@ -92,13 +97,14 @@ func scanNALUs(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		return nextStart + 1, data[:nextStart+1], nil
 	}
 
-	if atEOF || len(data) > 2*1024*1024 {
+	if atEOF || len(data) > 2*1024*1024 { // Limite de segurança para um frame
 		return len(data), data, nil
 	}
 
 	return 0, nil, nil
 }
 
+// handleOffer gerencia a negociação WebRTC
 func handleOffer(w http.ResponseWriter, r *http.Request) {
 	var req OfferRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -113,11 +119,11 @@ func handleOffer(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
-	ffmpegCtx, cancel := context.WithCancel(context.Background())
+	gstreamerCtx, cancel := context.WithCancel(context.Background())
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		log.Printf("WebRTC Connection State mudou para: %s\n", state.String())
 		if state >= webrtc.PeerConnectionStateDisconnected {
-			log.Println("PeerConnection state finalizado, cancelando o contexto do FFmpeg...")
+			log.Println("PeerConnection state finalizado, cancelando o contexto do GStreamer...")
 			cancel()
 		}
 	})
@@ -144,46 +150,38 @@ func handleOffer(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(answer)
-	go startFFmpeg(ffmpegCtx, videoTrack, req.Codec, req.Width, req.Height, req.FPS)
+
+	go startGStreamer(gstreamerCtx, videoTrack, req.Codec, req.Width, req.Height, req.FPS)
 }
 
-func startFFmpeg(ctx context.Context, track *webrtc.TrackLocalStaticSample, codec string, width, height, fps int) {
-	var cmd *exec.Cmd
-
-	// Parâmetros base para ambos os sistemas operacionais
-	ffmpegArgs := []string{
-		"-framerate", fmt.Sprintf("%d", fps),
-		"-video_size", fmt.Sprintf("%dx%d", width, height),
-		"-c:v", codec,
-		"-pix_fmt", "yuv420p",
-		// Otimizações para baixa latência
-		"-preset", "speed",
-		"-tune", "ultralowlatency ",
-		"-profile:v", "constrained_baseline",
-		// Controle de bitrate para evitar travamentos na rede
-		"-b:v", "3M", // Bitrate de 3 Mbps (ajuste conforme sua rede)
-		"-maxrate", "3M",
-		"-bufsize", "6M",
-		// Outros parâmetros
-		"-g", fmt.Sprintf("%d", fps*2), // GOP size
-		"-bf", "0",
-		"-f", "h264",
-		"pipe:1", // Saída para o pipe
-	}
-
+// startGStreamer constrói e executa o pipeline GStreamer
+func startGStreamer(ctx context.Context, track *webrtc.TrackLocalStaticSample, codec string, width, height, fps int) {
+	var pipeline string
 	if runtime.GOOS == "windows" {
-		// Constrói o comando para Windows (gdigrab)
-		args := append([]string{"-f", "gdigrab", "-i", "desktop"}, ffmpegArgs...)
-		cmd = exec.Command("ffmpeg", args...)
-	} else { // Linux
-		display := os.Getenv("DISPLAY")
-		if display == "" {
-			display = ":0"
+		// Pipeline de alta performance para Windows usando DirectX 12
+		basePipeline := fmt.Sprintf("d3d12screencapturesrc ! video/x-raw,framerate=%d/1", fps)
+		if codec == "x264enc" || codec == "x264enc tune=zerolatency" {
+			// Se o encoder for por software (CPU), precisamos baixar o frame da GPU
+			pipeline = fmt.Sprintf(
+				"%s ! d3d12download ! videoconvert ! %s ! h264parse config-interval=-1 ! fdsink fd=1",
+				basePipeline, codec,
+			)
+		} else {
+			// Para encoders de hardware (amfh264enc, etc.), a conversão não é necessária (Zero-Copy)
+			pipeline = fmt.Sprintf(
+				"%s ! %s ! h264parse config-interval=-1 ! fdsink fd=1",
+				basePipeline, codec,
+			)
 		}
-		// Constrói o comando para Linux (x11grab)
-		args := append([]string{"-f", "x11grab", "-i", display}, ffmpegArgs...)
-		cmd = exec.Command("ffmpeg", args...)
+	} else { // Linux
+		pipeline = fmt.Sprintf(
+			"x11grabsrc ! video/x-raw,framerate=%d/1 ! videoconvert ! %s ! h264parse config-interval=-1 ! fdsink fd=1",
+			fps, codec,
+		)
 	}
+
+	log.Printf("Executando pipeline GStreamer: %s", pipeline)
+	cmd := exec.Command("gst-launch-1.0", pipeline)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -197,25 +195,28 @@ func startFFmpeg(ctx context.Context, track *webrtc.TrackLocalStaticSample, code
 		panic(err)
 	}
 
+	// Goroutine para capturar e logar os erros do GStreamer
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
-			log.Printf("FFMPEG (stderr): %s", scanner.Text())
+			log.Printf("GSTREAMER (stderr): %s", scanner.Text())
 		}
 	}()
 
-	log.Printf("FFmpeg iniciado (%s %dx%d @ %dfps), PID: %d", codec, width, height, fps, cmd.Process.Pid)
+	log.Printf("GStreamer iniciado (encoder: %s, %dx%d @ %dfps), PID: %d", codec, width, height, fps, cmd.Process.Pid)
 
+	// Goroutine para encerrar o GStreamer quando a conexão WebRTC cair
 	go func() {
 		<-ctx.Done()
-		log.Printf("Contexto cancelado. Encerrando FFmpeg (PID: %d)...", cmd.Process.Pid)
+		log.Printf("Contexto cancelado. Encerrando GStreamer (PID: %d)...", cmd.Process.Pid)
 		if cmd.Process != nil {
 			if err := cmd.Process.Kill(); err != nil {
-				log.Printf("Falha ao encerrar FFmpeg, talvez já tenha terminado: %v", err)
+				log.Printf("Falha ao encerrar GStreamer, talvez já tenha terminado: %v", err)
 			}
 		}
 	}()
 
+	// Lê o stream H.264 bruto da saída do GStreamer
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 2*1024*1024), 2*1024*1024)
 	scanner.Split(scanNALUs)
@@ -231,13 +232,13 @@ func startFFmpeg(ctx context.Context, track *webrtc.TrackLocalStaticSample, code
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		log.Printf("Erro lendo stdout do FFmpeg: %v", err)
+		log.Printf("Erro lendo stdout do GStreamer: %v", err)
 	}
 	if err := cmd.Wait(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.String() != "signal: killed" {
-			log.Printf("FFmpeg encerrou com erro inesperado: %v", err)
+			log.Printf("GStreamer encerrou com erro inesperado: %v", err)
 		}
 	} else {
-		log.Println("FFmpeg encerrou com sucesso.")
+		log.Println("GStreamer encerrou com sucesso.")
 	}
 }
