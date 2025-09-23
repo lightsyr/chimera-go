@@ -2,48 +2,70 @@ import vgamepad as vg
 
 class Gamepad:
     def __init__(self):
+        """Inicializa o controle virtual de Xbox 360."""
         self.vgpad = vg.VX360Gamepad()
-        self.lx = 0
-        self.ly = 0
-        self.rx = 0
-        self.ry = 0
+        # Armazena o último valor conhecido para cada eixo para evitar envios redundantes
+        self.axes = {
+            'lx': 0, 'ly': 0,  # Analógico Esquerdo (Left Stick)
+            'rx': 0, 'ry': 0,  # Analógico Direito (Right Stick)
+            'lt': 0, 'rt': 0   # Gatilhos (Left/Right Trigger)
+        }
+        print("[Gamepad] Controle virtual de Xbox 360 inicializado.")
 
     def handle_input(self, tipo, idx, valor):
-        if tipo == 0:  # Analógico
-            if idx == 0: self.lx = valor
-            if idx == 1: self.ly = valor
-            if idx == 2: self.rx = valor
-            if idx == 3: self.ry = valor
-            self.vgpad.left_joystick(x_value=self.lx, y_value=self.ly)
-            self.vgpad.right_joystick(x_value=self.rx, y_value=self.ry)
+        """
+        Recebe o input do WebSocket e o traduz para o controle virtual.
+        - tipo 0: Eixo (Analógicos e Gatilhos)
+        - tipo 1: Botão (ABXY, D-Pad, Ombros, etc.)
+        """
+        if tipo == 0:  # Trata Eixos (Analógicos e Gatilhos)
+            # Mapeamento de IDs de eixos recebidos para os nomes internos
+            axis_map = {
+                0: 'lx', 1: 'ly',  # Analógico Esquerdo
+                2: 'rx', 3: 'ry',  # Analógico Direito
+                4: 'lt',           # Gatilho Esquerdo (L2)
+                5: 'rt'            # Gatilho Direito (R2)
+            }
+            if idx in axis_map:
+                axis_name = axis_map[idx]
+                self.axes[axis_name] = valor
 
-        elif tipo == 1:  # Botão
-            mapping = {
+                # Atualiza os componentes específicos do controle virtual
+                if axis_name.startswith('l'):
+                    self.vgpad.left_joystick_float(x_value_float=self.axes['lx'] / 32767.0, y_value_float=self.axes['ly'] / 32767.0)
+                if axis_name.startswith('r'):
+                    self.vgpad.right_joystick_float(x_value_float=self.axes['rx'] / 32767.0, y_value_float=self.axes['ry'] / 32767.0)
+                
+                # Gatilhos esperam um valor de 0 a 1.0
+                if axis_name == 'lt':
+                    self.vgpad.left_trigger_float(value_float=self.axes['lt'] / 32767.0)
+                if axis_name == 'rt':
+                    self.vgpad.right_trigger_float(value_float=self.axes['rt'] / 32767.0)
+
+        elif tipo == 1:  # Trata Botões
+            # Mapeamento dos IDs de botões recebidos para os botões do vgamepad
+            button_mapping = {
                 0: vg.XUSB_BUTTON.XUSB_GAMEPAD_A,
                 1: vg.XUSB_BUTTON.XUSB_GAMEPAD_B,
                 2: vg.XUSB_BUTTON.XUSB_GAMEPAD_X,
                 3: vg.XUSB_BUTTON.XUSB_GAMEPAD_Y,
-                4: vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_SHOULDER,
-                5: vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER,
-                6: vg.XUSB_BUTTON.XUSB_GAMEPAD_BACK,
-                7: vg.XUSB_BUTTON.XUSB_GAMEPAD_START,
-                8: vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_THUMB,
-                9: vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_THUMB,
+                4: vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_SHOULDER,    # L1
+                5: vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER,   # R1
+                6: vg.XUSB_BUTTON.XUSB_GAMEPAD_BACK,             # Select / Share
+                7: vg.XUSB_BUTTON.XUSB_GAMEPAD_START,            # Start / Options
+                8: vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_THUMB,     # L3
+                9: vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_THUMB,    # R3
                 10: vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_UP,
                 11: vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_DOWN,
                 12: vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_LEFT,
                 13: vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_RIGHT,
             }
-            if idx in mapping:
+            if idx in button_mapping:
+                button = button_mapping[idx]
                 if valor == 1:
-                    self.vgpad.press_button(mapping[idx])
+                    self.vgpad.press_button(button=button)
                 else:
-                    self.vgpad.release_button(mapping[idx])
+                    self.vgpad.release_button(button=button)
 
-        elif tipo == 2:  # Gatilho
-            if idx == 0:
-                self.vgpad.left_trigger(value=valor >> 7)  # escala para 0–255
-            elif idx == 1:
-                self.vgpad.right_trigger(value=valor >> 7)
-
+        # Envia todas as atualizações para o controle virtual de uma vez
         self.vgpad.update()

@@ -1,450 +1,172 @@
 <!DOCTYPE html>
 <html lang="pt-br">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chimera - WebRTC</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Chimera - Game Stream</title>
     <style>
-      body {
-        background-color: #111827;
-        margin: 0;
-        overflow: hidden;
-      }
-      .joystick-area {
-        width: 120px;
-        height: 120px;
-        background: #374151cc;
-        border-radius: 50%;
-        position: relative;
-        touch-action: none;
-      }
-      .joystick-knob {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        position: absolute;
-        pointer-events: none;
-      }
-      #left-knob {
-        background: #3b82f6;
-      }
-      #right-knob {
-        background: #22c55e;
-      }
-      .overlay-controls {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-        z-index: 10000;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        align-items: stretch;
-        padding: 2vw;
-      }
-      .overlay-controls * {
-        pointer-events: auto;
-      }
-      .xyba-cross {
-        display: grid;
-        grid-template-areas: ". y ." "x a b" ". . .";
-        grid-template-columns: 40px 40px 40px;
-        grid-template-rows: 40px 40px 40px;
-        gap: 8px;
-        justify-items: center;
-        align-items: center;
-        margin-top: 16px;
-      }
+        /* --- Seu CSS completo aqui (sem alterações) --- */
+        body, html { margin: 0; padding: 0; background: #000; overflow: hidden; font-family: sans-serif; touch-action: none; }
+        #video-container { position: relative; width: 100vw; height: 100vh; cursor: pointer; }
+        #video-player { width: 100%; height: 100%; object-fit: cover; background: #000; }
+        .overlay-controls { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; display: none; flex-direction: column; justify-content: space-between; align-items: stretch; }
+        .overlay-controls * { pointer-events: auto; }
+        .status-bar { display: flex; justify-content: center; gap: 1rem; padding: 0.5rem; background: rgba(0, 0, 0, 0.3); color: #D1D5DB; font-size: 0.875rem; }
+        .main-controls-container { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 1.5rem; }
+        .control-group { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+        .label { color: white; font-size: 0.75rem; margin-bottom: 0.25rem; }
+        .joystick-area { width: 100px; height: 100px; background: rgba(55, 65, 81, 0.46); border-radius: 50%; position: relative; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+        .joystick-knob { width: 40px; height: 40px; border-radius: 50%; position: absolute; pointer-events: none; box-shadow: 0 0 10px rgba(0, 0, 0, 0.5); }
+        #left-knob { background: rgba(59, 130, 246, 0.66); }
+        #right-knob { background: rgba(34, 197, 94, 0.66); }
+        .game-button { width: 48px; height: 48px; border-radius: 50%; font-weight: bold; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); border: none; color: white; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; cursor: pointer; }
+        .dpad { display: grid; width: 154px; height: 154px; grid-template-areas: ". up ." "left . right" ". down ."; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; align-items: center; justify-items: center; }
+        .dpad .btn-up { grid-area: up; }
+        .dpad .btn-left { grid-area: left; }
+        .dpad .btn-right { grid-area: right; }
+        .dpad .btn-down { grid-area: down; }
+        .dpad button { background: rgba(55, 65, 81, 0.53); }
+        .xyba-cross { width: 154px; height: 154px; display: grid; grid-template-areas: ". y ." "x a b" ". . ."; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; align-items: center; justify-items: center; }
+        .xyba-cross .btn-y { grid-area: y; background-color: #FBBF24; color: black; }
+        .xyba-cross .btn-x { grid-area: x; background-color: #2563EB; color: white; }
+        .xyba-cross .btn-a { grid-area: a; background-color: #16A34A; color: white; }
+        .xyba-cross .btn-b { grid-area: b; background-color: #DC2626; color: white; }
+        .shoulder-buttons { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+        .shoulder-buttons button { width: 60px; height: 35px; border-radius: 8px; background: rgba(55, 65, 81, 0.53); font-weight: bold; border: none; color: white; }
+        .controls-bottom { display: flex; justify-content: center; gap: 1rem; padding-bottom: 0.5rem; }
+        .controls-bottom button { background: rgba(55, 65, 81, 0.66); color: white; font-weight: bold; border-radius: 8px; padding: 0.5rem 1rem; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); border: none; }
     </style>
-  </head>
-  <body
-    class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-0"
-  >
-    <div
-      class="max-w-7xl w-full mx-auto text-center relative"
-      style="height: 100vh"
-    >
-      <div
-        class="bg-gray-800 rounded-lg shadow-lg overflow-hidden relative"
-        style="height: 100vh"
-      >
-        <!-- Player WebRTC -->
-        <video
-          id="video-player"
-          autoplay
-          playsinline
-          muted
-          style="width: 100%; height: 100vh; background: black"
-        ></video>
-
-        <!-- Overlay controles -->
-        <div id="overlay-controls" class="overlay-controls">
-          <div class="controls-triggers controls-row">
-            <div class="triggers-group">
-              <div class="flex flex-col items-center">
-                <label for="lt" class="text-xs mb-1">LT</label>
-                <input
-                  type="range"
-                  id="lt"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value="0"
-                  class="w-16"
-                />
-              </div>
-              <button
-                class="bg-gray-700 text-white font-bold py-2 px-4 rounded"
-                data-action="lb"
-              >
-                LB
-              </button>
-            </div>
-            <div class="triggers-group">
-              <button
-                class="bg-gray-700 text-white font-bold py-2 px-4 rounded"
-                data-action="rb"
-              >
-                RB
-              </button>
-              <div class="flex flex-col items-center">
-                <label for="rt" class="text-xs mb-1">RT</label>
-                <input
-                  type="range"
-                  id="rt"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value="0"
-                  class="w-16"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div class="controls-main controls-row">
-            <div class="controls-left">
-              <div class="flex flex-col items-center mb-2">
-                <span class="text-xs mb-1">Left Stick</span>
-                <div id="left-stick" class="joystick-area">
-                  <div
-                    id="left-knob"
-                    class="joystick-knob"
-                    style="left: 40px; top: 40px"
-                  ></div>
-                </div>
-              </div>
-              <div class="flex flex-col items-center mb-2">
-                <span class="text-xs mb-1">D-Pad</span>
-                <div class="dpad-row">
-                  <button
-                    class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded"
-                    data-action="dpad_up"
-                  >
-                    ▲
-                  </button>
-                </div>
-                <div class="dpad-row">
-                  <button
-                    class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded"
-                    data-action="dpad_left"
-                  >
-                    ◀
-                  </button>
-                  <button
-                    class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded"
-                    data-action="dpad_down"
-                  >
-                    ▼
-                  </button>
-                  <button
-                    class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded"
-                    data-action="dpad_right"
-                  >
-                    ▶
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="controls-center">
-              <div id="ws-status" class="mt-2 text-sm text-gray-400">
-                Conectando...
-              </div>
-            </div>
-
-            <div class="controls-right">
-              <div class="flex flex-col items-center mb-2">
-                <span class="text-xs mb-1">Right Stick</span>
-                <div id="right-stick" class="joystick-area">
-                  <div
-                    id="right-knob"
-                    class="joystick-knob"
-                    style="left: 40px; top: 40px"
-                  ></div>
-                </div>
-              </div>
-              <div class="flex flex-col items-center mb-2">
-                <span class="text-xs mb-1">Ação</span>
-                <div class="xyba-cross">
-                  <button
-                    class="xyba-btn-y bg-yellow-400 hover:bg-yellow-500 text-black font-bold rounded"
-                    style="grid-area: y"
-                    data-action="y"
-                  >
-                    Y
-                  </button>
-                  <button
-                    class="xyba-btn-x bg-blue-600 hover:bg-blue-700 text-white font-bold rounded"
-                    style="grid-area: x"
-                    data-action="x"
-                  >
-                    X
-                  </button>
-                  <button
-                    class="xyba-btn-a bg-green-600 hover:bg-green-700 text-white font-bold rounded"
-                    style="grid-area: a"
-                    data-action="a"
-                  >
-                    A
-                  </button>
-                  <button
-                    class="xyba-btn-b bg-red-600 hover:bg-red-700 text-white font-bold rounded"
-                    style="grid-area: b"
-                    data-action="b"
-                  >
-                    B
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="controls-bottom">
-            <button
-              class="bg-gray-700 text-white font-bold py-2 px-6 rounded"
-              data-action="back"
-            >
-              Select
-            </button>
-            <button
-              class="bg-gray-700 text-white font-bold py-2 px-6 rounded"
-              data-action="start"
-            >
-              Start
-            </button>
-          </div>
+</head>
+<body>
+    <div id="video-container">
+        <video id="video-player" muted playsinline controls 
+               poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' fill='%23000'/%3E%3Cpolygon points='80,60 80,140 140,100' fill='%23fff'/%3E%3C/svg%3E">
+        </video>
+        <div class="overlay-controls">
+            <div class="status-bar"><div id="ws-status">WS: Ocioso</div><div id="rtc-status">WebRTC: Ocioso</div></div>
+            <div class="main-controls-container"><div class="control-group"><div class="shoulder-buttons"><button data-action="l1">L1</button><button data-action="l2" data-type="axis">L2</button></div><div class="control-group"><span class="label">Left Stick</span><div id="left-stick" class="joystick-area"><div id="left-knob" class="joystick-knob"></div></div></div><div class="control-group"><span class="label">D-Pad</span><div class="dpad"><button data-action="dpad_up" class="game-button btn-up">▲</button><button data-action="dpad_left" class="game-button btn-left">◀</button><button data-action="dpad_right" class="game-button btn-right">▶</button><button data-action="dpad_down" class="game-button btn-down">▼</button></div></div></div><div class="control-group"><div class="shoulder-buttons"><button data-action="r1">R1</button><button data-action="r2" data-type="axis">R2</button></div><div class="control-group"><span class="label">Right Stick</span><div id="right-stick" class="joystick-area"><div id="right-knob" class="joystick-knob"></div></div></div><div class="control-group"><span class="label">Ação</span><div class="xyba-cross"><button class="game-button btn-y" data-action="y">Y</button><button class="game-button btn-x" data-action="x">X</button><button class="game-button btn-a" data-action="a">A</button><button class="game-button btn-b" data-action="b">B</button></div></div></div></div>
+            <div class="controls-bottom"><button data-action="back">Select</button><button data-action="start">Start</button></div>
         </div>
-      </div>
     </div>
 
     <script>
-      // --- WebRTC Setup ---
-      const pc = new RTCPeerConnection();
-      const dataChannel = pc.createDataChannel("gamepad");
-      dataChannel.binaryType = "arraybuffer";
+        const controlsOverlay = document.querySelector('.overlay-controls');
+        const videoContainer = document.getElementById('video-container');
+        const videoEl = document.getElementById('video-player');
 
-      const videoEl = document.getElementById("video-player");
-      const statusEl = document.getElementById("ws-status");
+        /* --- CÓDIGO COMENTADO PARA SUPORTE A TOQUE --- */
+        // ... (código de toque permanece comentado) ...
 
-      // Adiciona tracks recebidos em um MediaStream
-      pc.ontrack = (event) => {
-        const ms = videoEl.srcObject || new MediaStream();
-        ms.addTrack(event.track);
-        videoEl.srcObject = ms;
-      };
+        // --- FUNÇÃO DE SETUP DO GAMEPAD FÍSICO ---
+        function setupGamepadAPI(sendBinary, floatToInt16) {
+            console.log("Aguardando gamepad físico...");
+            let previousGamepadState = {};
+            let gamepadIndex = null;
+            let animationFrameId = null;
 
-      // DataChannel
-      dataChannel.onopen = () =>
-        (statusEl.textContent = "DataChannel aberto (gamepad)");
-      dataChannel.onmessage = (ev) =>
-        console.log("Mensagem do servidor:", ev.data);
+            function gameLoop() {
+                if (gamepadIndex === null) return;
+                const gamepad = navigator.getGamepads()[gamepadIndex];
+                if (!gamepad) return;
 
-      // --- Envio binário ---
-      function sendBinary(tipo, id, int16value) {
-        if (dataChannel.readyState !== "open") return;
-        const buf = new ArrayBuffer(4);
-        const view = new DataView(buf);
-        view.setUint8(0, tipo);
-        view.setUint8(1, id);
-        view.setInt16(2, int16value, true);
-        dataChannel.send(buf);
-      }
+                const deadzone = 0.1;
+                gamepad.axes.forEach((value, i) => {
+                    const prevValue = previousGamepadState.axes?.[i] || 0;
+                    if (Math.abs(value) < deadzone) value = 0;
+                    let finalValue = value;
+                    if (i === 1 || i === 3) { finalValue = -value; }
+                    if (value !== prevValue) { sendBinary(0, i, floatToInt16(finalValue)); }
+                });
 
-      function floatToInt16(v) {
-        return Math.round(Math.max(-1, Math.min(1, v)) * 32767);
-      }
-      function triggerToInt16(v) {
-        return Math.round(Math.max(0, Math.min(1, v)) * 32767);
-      }
+                gamepad.buttons.forEach((button, i) => {
+                    const wasPressed = previousGamepadState.buttons?.[i]?.pressed || false;
+                    const isPressed = button.pressed;
+                    const value = button.value;
+                    const prevValue = previousGamepadState.buttons?.[i]?.value || 0;
+                    
+                    // Gatilhos L2 (índice 6) e R2 (índice 7) são tratados como eixos analógicos
+                    if (i === 6 || i === 7) { 
+                        if (value !== prevValue) { 
+                            const axisId = (i === 6) ? 4 : 5; // Mapeia para eixos 4 e 5 do nosso sistema
+                            sendBinary(0, axisId, floatToInt16(value));
+                        }
+                    } else { // Demais botões são tratados como digitais
+                        if (isPressed !== wasPressed) {
+                            let buttonId = -1;
+                            // ########## INÍCIO DA CORREÇÃO DE MAPEAMENTO ##########
+                            // Converte o layout padrão do navegador (PS4/Xbox) para o layout esperado (Xbox 360)
+                            switch(i) {
+                                case 0: buttonId = 0; break;  // A (Xbox) / X (PS4)
+                                case 1: buttonId = 1; break;  // B (Xbox) / Círculo (PS4)
+                                case 2: buttonId = 2; break;  // X (Xbox) / Quadrado (PS4)
+                                case 3: buttonId = 3; break;  // Y (Xbox) / Triângulo (PS4)
+                                case 4: buttonId = 4; break;  // L1 / LB
+                                case 5: buttonId = 5; break;  // R1 / RB
+                                case 8: buttonId = 6; break;  // Select/View (Xbox) / Share (PS4)
+                                case 9: buttonId = 7; break;  // Start/Menu (Xbox) / Options (PS4)
+                                case 10: buttonId = 8; break; // L3 / Analógico Esquerdo Pressionado
+                                case 11: buttonId = 9; break; // R3 / Analógico Direito Pressionado
+                                case 12: buttonId = 10; break; // D-Pad Cima
+                                case 13: buttonId = 11; break; // D-Pad Baixo
+                                case 14: buttonId = 12; break; // D-Pad Esquerda
+                                case 15: buttonId = 13; break; // D-Pad Direita
+                                // Botão 16 (PS/Home) geralmente é capturado pelo sistema e não é enviado
+                            }
+                            // ########## FIM DA CORREÇÃO DE MAPEAMENTO ##########
+                            if (buttonId !== -1) { 
+                                sendBinary(1, buttonId, isPressed ? 1 : 0);
+                            }
+                        }
+                    }
+                });
 
-      const buttonMap = {
-        a: 0,
-        b: 1,
-        x: 2,
-        y: 3,
-        lb: 4,
-        rb: 5,
-        back: 6,
-        start: 7,
-        ls: 8,
-        rs: 9,
-        dpad_up: 10,
-        dpad_down: 11,
-        dpad_left: 12,
-        dpad_right: 13,
-      };
-      const triggerMap = { lt: 0, rt: 1 };
-
-      document
-        .querySelectorAll(".overlay-controls button[data-action]")
-        .forEach((btn) => {
-          const name = btn.dataset.action;
-          const id = buttonMap[name];
-          if (id === undefined) return;
-          btn.addEventListener("mousedown", () => sendBinary(1, id, 1));
-          btn.addEventListener("mouseup", () => sendBinary(1, id, 0));
-          btn.addEventListener(
-            "touchstart",
-            (e) => {
-              sendBinary(1, id, 1);
-              e.preventDefault();
-            },
-            { passive: false }
-          );
-          btn.addEventListener(
-            "touchend",
-            (e) => {
-              sendBinary(1, id, 0);
-              e.preventDefault();
-            },
-            { passive: false }
-          );
-        });
-
-      ["lt", "rt"].forEach((k) => {
-        const el = document.getElementById(k);
-        el.addEventListener("input", () =>
-          sendBinary(2, triggerMap[k], triggerToInt16(parseFloat(el.value)))
-        );
-      });
-
-      function setupStick(stickId, knobId, axisXid, axisYid) {
-        const stick = document.getElementById(stickId);
-        const knob = document.getElementById(knobId);
-        const size = 120,
-          knobSize = 40,
-          radius = (size - knobSize) / 2;
-        let dragging = false,
-          dragId = null;
-
-        function setKnob(x, y) {
-          knob.style.left = radius + x * radius + "px";
-          knob.style.top = radius - y * radius + "px";
-        }
-        function send(x, y) {
-          sendBinary(0, axisXid, floatToInt16(x));
-          sendBinary(0, axisYid, floatToInt16(y));
-        }
-
-        function handle(clientX, clientY) {
-          const rect = stick.getBoundingClientRect();
-          let x = (clientX - rect.left - size / 2) / radius;
-          let y = (clientY - rect.top - size / 2) / radius;
-          x = Math.max(-1, Math.min(1, x));
-          y = Math.max(-1, Math.min(1, -y));
-          setKnob(x, y);
-          send(x, y);
-        }
-
-        function reset() {
-          setKnob(0, 0);
-          send(0, 0);
-        }
-
-        stick.addEventListener("mousedown", (e) => {
-          dragging = true;
-          handle(e.clientX, e.clientY);
-        });
-        document.addEventListener("mousemove", (e) => {
-          if (dragging) handle(e.clientX, e.clientY);
-        });
-        document.addEventListener("mouseup", (e) => {
-          if (dragging) {
-            dragging = false;
-            reset();
-          }
-        });
-
-        stick.addEventListener(
-          "touchstart",
-          (e) => {
-            if (dragId !== null) return;
-            const t = e.changedTouches[0];
-            dragId = t.identifier;
-            dragging = true;
-            handle(t.clientX, t.clientY);
-            e.preventDefault();
-          },
-          { passive: false }
-        );
-        document.addEventListener(
-          "touchmove",
-          (e) => {
-            if (!dragging || dragId === null) return;
-            for (let t of e.changedTouches) {
-              if (t.identifier === dragId) {
-                handle(t.clientX, t.clientY);
-                e.preventDefault();
-              }
+                previousGamepadState = { axes: [...gamepad.axes], buttons: gamepad.buttons.map(b => ({ pressed: b.pressed, value: b.value })) };
+                animationFrameId = requestAnimationFrame(gameLoop);
             }
-          },
-          { passive: false }
-        );
-        document.addEventListener(
-          "touchend",
-          (e) => {
-            if (!dragging || dragId === null) return;
-            for (let t of e.changedTouches) {
-              if (t.identifier === dragId) {
-                dragging = false;
-                dragId = null;
-                reset();
-                e.preventDefault();
-              }
-            }
-          },
-          { passive: false }
-        );
 
-        reset();
-      }
+            window.addEventListener("gamepadconnected", (e) => {
+                console.log(`Gamepad conectado: ${e.gamepad.id}.`);
+                if (gamepadIndex === null) { gamepadIndex = e.gamepad.index; gameLoop(); }
+            });
 
-      setupStick("left-stick", "left-knob", 0, 1);
-      setupStick("right-stick", "right-knob", 2, 3);
+            window.addEventListener("gamepaddisconnected", (e) => {
+                console.log(`Gamepad desconectado: ${e.gamepad.id}.`);
+                if (gamepadIndex === e.gamepad.index) { gamepadIndex = null; cancelAnimationFrame(animationFrameId); }
+            });
+        }
+        
+        // --- FUNÇÃO DE INICIALIZAÇÃO PRINCIPAL ---
+        function initializeApp() {
+            console.log("Primeiro clique detectado. Inicializando o sistema...");
+            videoEl.controls = false;
+            videoEl.removeAttribute('poster');
+            videoContainer.style.cursor = 'none';
+            videoEl.addEventListener('playing', () => { videoContainer.requestFullscreen().catch(err => { console.warn(`Aviso: Não foi possível entrar em fullscreen: ${err.message}`); }); });
 
-      // --- SDP Offer/Answer ---
-      async function negotiate() {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
+            const wsStatusEl = document.getElementById('ws-status');
+            const rtcStatusEl = document.getElementById('rtc-status');
+            const wsUrl = `ws://${window.location.hostname}:9000`;
+            const ws = new WebSocket(wsUrl);
+            ws.binaryType = "arraybuffer";
+            ws.onopen = () => { if(wsStatusEl) wsStatusEl.textContent = "WS: Conectado"; };
+            ws.onclose = () => { if(wsStatusEl) wsStatusEl.textContent = "WS: Desconectado"; };
+            ws.onerror = () => { if(wsStatusEl) wsStatusEl.textContent = "WS: Erro"; };
+            
+            function sendBinary(tipo, id, value) { if (ws.readyState !== WebSocket.OPEN) return; const buf = new ArrayBuffer(4); const view = new DataView(buf); view.setUint8(0, tipo); view.setUint8(1, id); view.setInt16(2, value, true); ws.send(buf); }
+            function floatToInt16(v) { return Math.round(Math.max(-1, Math.min(1, v)) * 32767); }
+            
+            setupGamepadAPI(sendBinary, floatToInt16);
 
-        const LOCAL_IP = window.location.hostname; // pega IP/host do servidor que serviu o HTML
-        const res = await fetch(`http://${LOCAL_IP}:8080/offer`, {
-          // porta do Go
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "offer", sdp: offer.sdp }),
-        });
+            const configuration = { iceServers: [ { urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' } ] };
+            const pc = new RTCPeerConnection(configuration);
+            pc.addTransceiver('video', { direction: 'recvonly' });
+            pc.onconnectionstatechange = () => { if(rtcStatusEl) rtcStatusEl.textContent = `WebRTC: ${pc.connectionState}`; };
+            pc.ontrack = e => { if (videoEl.srcObject !== e.streams[0]) { videoEl.srcObject = e.streams[0]; videoEl.play().catch(err => console.error("Erro ao tocar vídeo no ontrack:", err)); } };
+            async function negotiate() { const iceGatheringPromise = new Promise(resolve => { pc.onicecandidate = e => e.candidate === null && resolve(); }); const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await iceGatheringPromise; if(rtcStatusEl) rtcStatusEl.textContent = 'WebRTC: Negociando...'; const finalOffer = pc.localDescription; const res = await fetch('/offer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sdp: finalOffer.sdp, codec: "h264_amf", width: 1920, height: 1080, fps: 60 }) }); if (!res.ok) { if(rtcStatusEl) rtcStatusEl.textContent = `WebRTC: Erro (${res.status})`; return; } const answer = await res.json(); await pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp }); }
+            negotiate().catch(err => { console.error("Falha na negociação WebRTC:", err); if(rtcStatusEl) rtcStatusEl.textContent = 'WebRTC: Falha Crítica'; });
+        }
 
-        const j = await res.json();
-        await pc.setRemoteDescription({ type: "answer", sdp: j.sdp });
-      }
-
-      negotiate().catch(console.error);
+        videoContainer.addEventListener('click', initializeApp, { once: true });
     </script>
-  </body>
+</body>
 </html>

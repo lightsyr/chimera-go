@@ -1,235 +1,243 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
+	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
+	"runtime"
+	"syscall"
+	"time"
 
-	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v3/pkg/media"
 )
-
-func getLocalIP() string {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, addr := range addrs {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil {
-				return ipnet.IP.String()
-			}
-		}
-	}
-	return "127.0.0.1"
-}
 
 var (
-	udpListenIP   = getLocalIP()
-	udpListenPort = 5004
+	pythonPath   = "python"
+	pythonScript = "./gamepad-ws-server/src/server.py"
 )
 
-// SDPRequest recebe JSON do navegador
-type SDPRequest struct {
-	Type string `json:"type"`
-	SDP  string `json:"sdp"`
+type OfferRequest struct {
+	SDP    string `json:"sdp"`
+	Codec  string `json:"codec"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+	FPS    int    `json:"fps"`
 }
 
 func main() {
-	// Flag para escolher codec via linha de comando
-	codec := flag.String("codec", "h264_qsv", "Codec de vídeo para FFmpeg (ex: h264_qsv, h264_nvenc, h264_amf)")
-	flag.Parse()
+	logFile, err := os.OpenFile("chimera-go.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		log.Fatalf("Erro ao abrir arquivo de log: %v", err)
+	}
+	defer logFile.Close()
 
-	// Inicia FFmpeg para streaming RTP
-	go startFFmpeg(*codec)
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
+	log.SetOutput(multiWriter)
+	log.Println("--- Servidor Iniciado ---")
 
-	// Inicia servidor Python WebSocket
-	go startPythonWebSocketServer()
+	cmdPython := exec.Command(pythonPath, pythonScript)
+	cmdPython.Stdout = multiWriter
+	cmdPython.Stderr = multiWriter
 
-	// Servidor HTTP para HTML/JS
-	fs := http.FileServer(http.Dir("./web")) // index.html dentro de ./web
-	http.Handle("/", fs)
+	if err := cmdPython.Start(); err != nil {
+		log.Fatalf("[Go] Erro ao iniciar server.py: %v", err)
+	}
+	log.Printf("[Go] server.py iniciado com PID: %d", cmdPython.Process.Pid)
 
-	// Endpoint para receber offer do navegador
-	http.HandleFunc("/offer", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
-			return
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		log.Println("Sinal de encerramento recebido. Desligando o servidor Python...")
+		if cmdPython.Process != nil {
+			if err := cmdPython.Process.Kill(); err != nil {
+				log.Printf("Falha ao encerrar o processo Python: %v", err)
+			}
 		}
+		os.Exit(0)
+	}()
 
-		var req SDPRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Erro ao parsear JSON", http.StatusBadRequest)
-			return
-		}
-
-		// Converte string para SDPType
-		var sdpType webrtc.SDPType
-		switch req.Type {
-		case "offer":
-			sdpType = webrtc.SDPTypeOffer
-		case "answer":
-			sdpType = webrtc.SDPTypeAnswer
-		default:
-			http.Error(w, "Tipo de SDP inválido", http.StatusBadRequest)
-			return
-		}
-
-		offer := webrtc.SessionDescription{
-			Type: sdpType,
-			SDP:  req.SDP,
-		}
-
-		answer, err := handleOffer(offer)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Erro ao processar offer: %v", err), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(answer)
-	})
-
-	log.Println("Servidor HTTP rodando em http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	httpAddr := ":8080"
+	http.Handle("/", http.FileServer(http.Dir("./web")))
+	http.HandleFunc("/offer", handleOffer)
+	log.Printf("[Go] Servidor HTTP rodando em http://localhost%s", httpAddr)
+	if err := http.ListenAndServe(httpAddr, nil); err != nil {
+		log.Printf("Erro fatal no servidor HTTP: %v", err)
+	}
 }
 
-// handleOffer cria PeerConnection, track de vídeo e DataChannel
-func handleOffer(offer webrtc.SessionDescription) (webrtc.SessionDescription, error) {
-	// Cria PeerConnection
-	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
-	if err != nil {
-		return webrtc.SessionDescription{}, err
+// scanNALUs é uma função auxiliar para encontrar os limites dos frames H.264
+func scanNALUs(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	startCode := []byte{0x00, 0x00, 0x01}
+	startCodeWithZero := []byte{0x00, 0x00, 0x00, 0x01}
+
+	nextStart := bytes.Index(data[1:], startCode)
+	if bytes.HasPrefix(data, startCodeWithZero) {
+		nextStart = bytes.Index(data[4:], startCode)
 	}
 
-	// Track de vídeo
-	videoTrack, err := webrtc.NewTrackLocalStaticRTP(
-		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264},
-		"video", "pion",
-	)
-	if err != nil {
-		return webrtc.SessionDescription{}, err
+	if nextStart != -1 {
+		return nextStart + 1, data[:nextStart+1], nil
 	}
 
-	rtpSender, err := peerConnection.AddTrack(videoTrack)
-	if err != nil {
-		return webrtc.SessionDescription{}, err
+	if atEOF || len(data) > 2*1024*1024 {
+		return len(data), data, nil
 	}
 
-	// Ponte RTP → Track
-	go startRTPListener(videoTrack)
+	return 0, nil, nil
+}
 
-	// Rotina para RTCP (mantém a conexão viva)
+func handleOffer(w http.ResponseWriter, r *http.Request) {
+	var req OfferRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Erro ao decodificar JSON", http.StatusBadRequest)
+		return
+	}
+	log.Printf("Recebido offer com config: %s %dx%d @ %dfps", req.Codec, req.Width, req.Height, req.FPS)
+
+	config := webrtc.Configuration{ICEServers: []webrtc.ICEServer{{URLs: []string{"stun:stun.l.google.com:19302"}}}}
+	pc, err := webrtc.NewPeerConnection(config)
+	if err != nil {
+		panic(err)
+	}
+
+	ffmpegCtx, cancel := context.WithCancel(context.Background())
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		log.Printf("WebRTC Connection State mudou para: %s\n", state.String())
+		if state >= webrtc.PeerConnectionStateDisconnected {
+			log.Println("PeerConnection state finalizado, cancelando o contexto do FFmpeg...")
+			cancel()
+		}
+	})
+
+	videoTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", "pion")
+	if err != nil {
+		panic(err)
+	}
+	if _, err = pc.AddTrack(videoTrack); err != nil {
+		panic(err)
+	}
+
+	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: req.SDP}
+	if err := pc.SetRemoteDescription(offer); err != nil {
+		panic(err)
+	}
+	answer, err := pc.CreateAnswer(nil)
+	if err != nil {
+		panic(err)
+	}
+	if err := pc.SetLocalDescription(answer); err != nil {
+		panic(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(answer)
+	go startFFmpeg(ffmpegCtx, videoTrack, req.Codec, req.Width, req.Height, req.FPS)
+}
+
+func startFFmpeg(ctx context.Context, track *webrtc.TrackLocalStaticSample, codec string, width, height, fps int) {
+	var cmd *exec.Cmd
+
+	// Parâmetros base para ambos os sistemas operacionais
+	ffmpegArgs := []string{
+		"-framerate", fmt.Sprintf("%d", fps),
+		"-video_size", fmt.Sprintf("%dx%d", width, height),
+		"-c:v", codec,
+		"-pix_fmt", "yuv420p",
+		// Otimizações para baixa latência
+		"-preset", "speed",
+		"-tune", "ultralowlatency ",
+		"-profile:v", "constrained_baseline",
+		// Controle de bitrate para evitar travamentos na rede
+		"-b:v", "3M", // Bitrate de 3 Mbps (ajuste conforme sua rede)
+		"-maxrate", "3M",
+		"-bufsize", "6M",
+		// Outros parâmetros
+		"-g", fmt.Sprintf("%d", fps*2), // GOP size
+		"-bf", "0",
+		"-f", "h264",
+		"pipe:1", // Saída para o pipe
+	}
+
+	if runtime.GOOS == "windows" {
+		// Constrói o comando para Windows (gdigrab)
+		args := append([]string{"-f", "gdigrab", "-i", "desktop"}, ffmpegArgs...)
+		cmd = exec.Command("ffmpeg", args...)
+	} else { // Linux
+		display := os.Getenv("DISPLAY")
+		if display == "" {
+			display = ":0"
+		}
+		// Constrói o comando para Linux (x11grab)
+		args := append([]string{"-f", "x11grab", "-i", display}, ffmpegArgs...)
+		cmd = exec.Command("ffmpeg", args...)
+	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		panic(err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		panic(err)
+	}
+	if err := cmd.Start(); err != nil {
+		panic(err)
+	}
+
 	go func() {
-		rtcpBuf := make([]byte, 1500)
-		for {
-			if _, _, err := rtpSender.Read(rtcpBuf); err != nil {
-				return
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			log.Printf("FFMPEG (stderr): %s", scanner.Text())
+		}
+	}()
+
+	log.Printf("FFmpeg iniciado (%s %dx%d @ %dfps), PID: %d", codec, width, height, fps, cmd.Process.Pid)
+
+	go func() {
+		<-ctx.Done()
+		log.Printf("Contexto cancelado. Encerrando FFmpeg (PID: %d)...", cmd.Process.Pid)
+		if cmd.Process != nil {
+			if err := cmd.Process.Kill(); err != nil {
+				log.Printf("Falha ao encerrar FFmpeg, talvez já tenha terminado: %v", err)
 			}
 		}
 	}()
 
-	// DataChannel gamepad
-	dc, err := peerConnection.CreateDataChannel("gamepad", nil)
-	if err != nil {
-		return webrtc.SessionDescription{}, err
-	}
-	dc.OnOpen(func() { log.Println("DataChannel do gamepad aberto!") })
-	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-		log.Printf("Recebido do gamepad: %v\n", msg.Data)
-	})
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 2*1024*1024), 2*1024*1024)
+	scanner.Split(scanNALUs)
 
-	// Set remote description (offer do navegador)
-	if err := peerConnection.SetRemoteDescription(offer); err != nil {
-		return webrtc.SessionDescription{}, err
-	}
-
-	// Cria answer
-	answer, err := peerConnection.CreateAnswer(nil)
-	if err != nil {
-		return webrtc.SessionDescription{}, err
-	}
-	if err := peerConnection.SetLocalDescription(answer); err != nil {
-		return webrtc.SessionDescription{}, err
-	}
-
-	return answer, nil
-}
-
-// startRTPListener lê RTP do FFmpeg e escreve no videoTrack
-func startRTPListener(videoTrack *webrtc.TrackLocalStaticRTP) {
-	addr := fmt.Sprintf("%s:%d", udpListenIP, udpListenPort)
-	conn, err := net.ListenPacket("udp", addr)
-	if err != nil {
-		log.Fatalf("Erro ao abrir listener UDP: %v", err)
-	}
-	defer conn.Close()
-	log.Printf("Ouvindo RTP em %s\n", addr)
-
-	buf := make([]byte, 1500)
-	for {
-		n, _, err := conn.ReadFrom(buf)
-		if err != nil {
-			log.Printf("Erro lendo RTP: %v", err)
-			continue
-		}
-
-		packet := &rtp.Packet{}
-		if err := packet.Unmarshal(buf[:n]); err != nil {
-			continue
-		}
-
-		if err := videoTrack.WriteRTP(packet); err != nil {
-			continue
+	for scanner.Scan() {
+		nalu := scanner.Bytes()
+		if len(nalu) > 0 {
+			naluWithStartCode := append([]byte{0x00, 0x00, 0x00, 0x01}, nalu...)
+			if writeErr := track.WriteSample(media.Sample{Data: naluWithStartCode, Duration: time.Second / time.Duration(fps)}); writeErr != nil {
+				log.Printf("Erro escrevendo sample WebRTC: %v", writeErr)
+				return
+			}
 		}
 	}
-}
-
-// FFmpeg via GPU para enviar RTP
-func startFFmpeg(codec string) {
-	os.RemoveAll("tmp")
-	os.Mkdir("tmp", 0755)
-
-	cmd := exec.Command("ffmpeg",
-		"-f", "dshow",
-		"-i", "video=screen-capture-recorder",
-		"-c:v", codec,
-		"-preset", "llhp",
-		"-g", "15",
-		"-bf", "0",
-		"-pix_fmt", "yuv420p",
-		"-an",
-		"-f", "rtp",
-		fmt.Sprintf("rtp://%s:%d", udpListenIP, udpListenPort),
-	)
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Start(); err != nil {
-		log.Fatalf("Erro ao iniciar FFmpeg: %v", err)
+	if err := scanner.Err(); err != nil {
+		log.Printf("Erro lendo stdout do FFmpeg: %v", err)
 	}
-	log.Printf("FFmpeg iniciado com codec %s, enviando RTP para %s:%d\n", codec, udpListenIP, udpListenPort)
-	cmd.Wait()
-}
-
-// Inicia servidor Python WebSocket
-func startPythonWebSocketServer() {
-	pythonPath := "python"
-	serverScript := "gamepad-ws-server/src/server.py"
-
-	cmd := exec.Command(pythonPath, serverScript)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Start(); err != nil {
-		log.Printf("Erro ao iniciar o servidor WebSocket Python: %v", err)
-		return
+	if err := cmd.Wait(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.String() != "signal: killed" {
+			log.Printf("FFmpeg encerrou com erro inesperado: %v", err)
+		}
+	} else {
+		log.Println("FFmpeg encerrou com sucesso.")
 	}
-	log.Println("Servidor WebSocket Python iniciado.")
 }

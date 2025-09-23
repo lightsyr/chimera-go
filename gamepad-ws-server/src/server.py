@@ -1,37 +1,33 @@
 import asyncio
 import websockets
-import struct
-import socket
 from gamepad import Gamepad
 
-def get_local_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        # Conecta a um IP público qualquer, só pra descobrir IP local
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-    finally:
-        s.close()
-    return ip
+gp = Gamepad()
 
-LOCAL_IP = get_local_ip()
+LISTEN_IP = "0.0.0.0"
+LISTEN_PORT = 9000
 
-async def handle_connection(websocket):
-    gamepad = Gamepad()
-    print(f"Cliente conectado em {LOCAL_IP}!")
+print(f"[Python] Servidor WebSocket pronto em ws://{LISTEN_IP}:{LISTEN_PORT}")
 
-    try:
-        async for message in websocket:
-            if isinstance(message, bytes) and len(message) == 4:
-                tipo, idx, valor = struct.unpack("<BBh", message)
-                gamepad.handle_input(tipo, idx, valor)
-    except websockets.exceptions.ConnectionClosed:
-        print("Conexão fechada")
+async def handler(websocket):
+    print(f"[Python] Cliente WebSocket conectado de {websocket.remote_address}")
+    async for message in websocket:
+        if isinstance(message, bytes) and len(message) == 4:
+            tipo = message[0]
+            idx = message[1]
+            valor = int.from_bytes(message[2:4], byteorder='little', signed=True)
+            gp.handle_input(tipo, idx, valor)
+        else:
+            print(f"[Python] Pacote inválido recebido: {message}")
+            
+    print(f"[Python] Cliente {websocket.remote_address} desconectado.")
 
 async def main():
-    async with websockets.serve(handle_connection, LOCAL_IP, 8765):
-        print(f"Servidor WebSocket rodando em ws://{LOCAL_IP}:8765")
-        await asyncio.Future()
+    async with websockets.serve(handler, LISTEN_IP, LISTEN_PORT):
+        await asyncio.Future()  # Mantém o servidor rodando
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("[Python] Servidor encerrado.")
