@@ -1,428 +1,949 @@
 <!DOCTYPE html>
 <html lang="pt-br">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
     <title>Chimera - Game Stream</title>
     <style>
-        /* --- ESTILOS GERAIS E DE LAYOUT --- */
-        html,
-        body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background: #000;
-            overflow: hidden;
-            font-family: sans-serif;
-            touch-action: none;
-        }
+      /* --- ESTILOS GERAIS E DE LAYOUT --- */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+        font-family: sans-serif;
+        touch-action: none;
+      }
 
-        #video-container {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-            cursor: pointer;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
+      #video-container {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        cursor: pointer;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
 
-        #video-player {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            background: #000;
-        }
+      #video-player {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        background: #000;
+      }
 
-        /* --- ESTILOS DO OVERLAY DE CONTROLES --- */
-        .overlay-controls {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 10;
-            display: none;
-            flex-direction: column;
-            justify-content: space-between;
-            align-items: stretch;
-            padding: 0.25rem;
-            box-sizing: border-box;
-        }
+      /* --- ESTILOS DO OVERLAY DE CONTROLES --- */
+      .overlay-controls {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 10;
+        display: none;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: stretch;
+        padding: 0.25rem;
+        box-sizing: border-box;
+      }
 
-        .overlay-controls * {
-            pointer-events: auto;
-        }
+      .overlay-controls * {
+        pointer-events: auto;
+      }
 
-        .status-bar {
-            display: flex;
-            justify-content: center;
-            gap: 0.5rem;
-            padding: 0.25rem;
-            background: rgba(0, 0, 0, 0.3);
-            color: #D1D5DB;
-            font-size: 0.7rem;
-        }
+      .status-bar {
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0.25rem;
+        background: rgba(0, 0, 0, 0.3);
+        color: #d1d5db;
+        font-size: 0.7rem;
+      }
 
+      .main-controls-container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-grow: 1;
+        padding: 0.5rem;
+        flex-wrap: wrap;
+      }
+
+      .control-group {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        flex: 1 1 40%;
+        margin-bottom: 0.25rem;
+      }
+
+      .label {
+        color: white;
+        font-size: 0.65rem;
+        margin-bottom: 0.2rem;
+      }
+
+      .joystick-area {
+        width: 60px;
+        height: 60px;
+        background: rgba(55, 65, 81, 0.46);
+        border-radius: 50%;
+        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        backdrop-filter: blur(5px);
+      }
+
+      .joystick-knob {
+        width: 25px;
+        height: 25px;
+        border-radius: 50%;
+        position: absolute;
+        pointer-events: none;
+        box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+      }
+
+      #left-knob {
+        background: rgba(59, 130, 246, 0.66);
+      }
+
+      #right-knob {
+        background: rgba(34, 197, 94, 0.66);
+      }
+
+      .game-button {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        font-weight: bold;
+        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+        border: none;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.9rem;
+        cursor: pointer;
+      }
+
+      .dpad {
+        display: grid;
+        width: 100px;
+        height: 100px;
+        grid-template-areas: ". up ." "left . right" ". down .";
+        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-rows: 1fr 1fr 1fr;
+        align-items: center;
+        justify-items: center;
+      }
+
+      .dpad .btn-up {
+        grid-area: up;
+      }
+
+      .dpad .btn-left {
+        grid-area: left;
+      }
+
+      .dpad .btn-right {
+        grid-area: right;
+      }
+
+      .dpad .btn-down {
+        grid-area: down;
+      }
+
+      .dpad button {
+        background: rgba(55, 65, 81, 0.53);
+      }
+
+      .xyba-cross {
+        width: 100px;
+        height: 100px;
+        display: grid;
+        grid-template-areas: ". y ." "x a b" ". . .";
+        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-rows: 1fr 1fr 1fr;
+        align-items: center;
+        justify-items: center;
+      }
+
+      .xyba-cross .btn-y {
+        grid-area: y;
+        background-color: #fbbf24;
+        color: black;
+      }
+
+      .xyba-cross .btn-x {
+        grid-area: x;
+        background-color: #2563eb;
+        color: white;
+      }
+
+      .xyba-cross .btn-a {
+        grid-area: a;
+        background-color: #16a34a;
+        color: white;
+      }
+
+      .xyba-cross .btn-b {
+        grid-area: b;
+        background-color: #dc2626;
+        color: white;
+      }
+
+      .shoulder-buttons {
+        display: flex;
+        gap: 0.3rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .shoulder-buttons button {
+        width: 45px;
+        height: 28px;
+        border-radius: 6px;
+        background: rgba(55, 65, 81, 0.53);
+        font-weight: bold;
+        border: none;
+        color: white;
+        font-size: 0.7rem;
+      }
+
+      .controls-bottom {
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
+        padding-bottom: 0.25rem;
+      }
+
+      .controls-bottom button {
+        background: rgba(55, 65, 81, 0.66);
+        color: white;
+        font-weight: bold;
+        border-radius: 6px;
+        padding: 0.3rem 0.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        font-size: 0.75rem;
+        border: none;
+      }
+
+      /* Loading e mensagens de status */
+      .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        color: white;
+        z-index: 20;
+        font-size: 1.2rem;
+      }
+
+      .error-message {
+        background: #dc2626;
+        color: white;
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 1rem;
+        text-align: center;
+        display: none;
+      }
+
+      /* --- AJUSTES PARA TELAS PEQUENAS --- */
+      @media (max-width: 400px), (max-height: 700px) {
         .main-controls-container {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-grow: 1;
-            padding: 0.5rem;
-            flex-wrap: wrap;
+          flex-wrap: wrap;
+          justify-content: space-around;
         }
 
         .control-group {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 0.5rem;
-            flex: 1 1 40%;
-            margin-bottom: 0.25rem;
-        }
-
-        .label {
-            color: white;
-            font-size: 0.65rem;
-            margin-bottom: 0.2rem;
+          flex: 1 1 45%;
+          margin-bottom: 0.3rem;
         }
 
         .joystick-area {
-            width: 60px;
-            height: 60px;
-            background: rgba(55, 65, 81, 0.46);
-            border-radius: 50%;
-            position: relative;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            backdrop-filter: blur(5px);
+          width: 50px;
+          height: 50px;
         }
 
         .joystick-knob {
-            width: 25px;
-            height: 25px;
-            border-radius: 50%;
-            position: absolute;
-            pointer-events: none;
-            box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+          width: 20px;
+          height: 20px;
         }
 
-        #left-knob {
-            background: rgba(59, 130, 246, 0.66);
-        }
-
-        #right-knob {
-            background: rgba(34, 197, 94, 0.66);
+        .dpad,
+        .xyba-cross {
+          width: 80px;
+          height: 80px;
         }
 
         .game-button {
-            width: 38px;
-            height: 38px;
-            border-radius: 50%;
-            font-weight: bold;
-            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
-            border: none;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.9rem;
-            cursor: pointer;
-        }
-
-        .dpad {
-            display: grid;
-            width: 100px;
-            height: 100px;
-            grid-template-areas: ". up ." "left . right" ". down .";
-            grid-template-columns: 1fr 1fr 1fr;
-            grid-template-rows: 1fr 1fr 1fr;
-            align-items: center;
-            justify-items: center;
-        }
-
-        .dpad .btn-up {
-            grid-area: up;
-        }
-
-        .dpad .btn-left {
-            grid-area: left;
-        }
-
-        .dpad .btn-right {
-            grid-area: right;
-        }
-
-        .dpad .btn-down {
-            grid-area: down;
-        }
-
-        .dpad button {
-            background: rgba(55, 65, 81, 0.53);
-        }
-
-        .xyba-cross {
-            width: 100px;
-            height: 100px;
-            display: grid;
-            grid-template-areas: ". y ." "x a b" ". . .";
-            grid-template-columns: 1fr 1fr 1fr;
-            grid-template-rows: 1fr 1fr 1fr;
-            align-items: center;
-            justify-items: center;
-        }
-
-        .xyba-cross .btn-y {
-            grid-area: y;
-            background-color: #FBBF24;
-            color: black;
-        }
-
-        .xyba-cross .btn-x {
-            grid-area: x;
-            background-color: #2563EB;
-            color: white;
-        }
-
-        .xyba-cross .btn-a {
-            grid-area: a;
-            background-color: #16A34A;
-            color: white;
-        }
-
-        .xyba-cross .btn-b {
-            grid-area: b;
-            background-color: #DC2626;
-            color: white;
-        }
-
-        .shoulder-buttons {
-            display: flex;
-            gap: 0.3rem;
-            margin-bottom: 0.5rem;
+          width: 32px;
+          height: 32px;
+          font-size: 0.75rem;
         }
 
         .shoulder-buttons button {
-            width: 45px;
-            height: 28px;
-            border-radius: 6px;
-            background: rgba(55, 65, 81, 0.53);
-            font-weight: bold;
-            border: none;
-            color: white;
-            font-size: 0.7rem;
-        }
-
-        .controls-bottom {
-            display: flex;
-            justify-content: center;
-            gap: 0.5rem;
-            padding-bottom: 0.25rem;
+          width: 40px;
+          height: 25px;
+          font-size: 0.65rem;
         }
 
         .controls-bottom button {
-            background: rgba(55, 65, 81, 0.66);
-            color: white;
-            font-weight: bold;
-            border-radius: 6px;
-            padding: 0.3rem 0.5rem;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-            font-size: 0.75rem;
-            border: none;
+          padding: 0.25rem 0.5rem;
+          font-size: 0.7rem;
         }
 
-        /* --- AJUSTES PARA TELAS PEQUENAS --- */
-        @media (max-width: 400px),
-        (max-height: 700px) {
-            .main-controls-container {
-                flex-wrap: wrap;
-                justify-content: space-around;
-            }
-
-            .control-group {
-                flex: 1 1 45%;
-                margin-bottom: 0.3rem;
-            }
-
-            .joystick-area {
-                width: 50px;
-                height: 50px;
-            }
-
-            .joystick-knob {
-                width: 20px;
-                height: 20px;
-            }
-
-            .dpad,
-            .xyba-cross {
-                width: 80px;
-                height: 80px;
-            }
-
-            .game-button {
-                width: 32px;
-                height: 32px;
-                font-size: 0.75rem;
-            }
-
-            .shoulder-buttons button {
-                width: 40px;
-                height: 25px;
-                font-size: 0.65rem;
-            }
-
-            .controls-bottom button {
-                padding: 0.25rem 0.5rem;
-                font-size: 0.7rem;
-            }
-
-            .status-bar {
-                font-size: 0.65rem;
-                padding: 0.2rem;
-            }
+        .status-bar {
+          font-size: 0.65rem;
+          padding: 0.2rem;
         }
+      }
 
-        /* Ajuste para landscape */
-        @media (orientation: landscape) {
-            .main-controls-container {
-                flex-direction: row;
-                flex-wrap: wrap;
-                justify-content: space-between;
-            }
+      /* Ajuste para landscape */
+      @media (orientation: landscape) {
+        .main-controls-container {
+          flex-direction: row;
+          flex-wrap: wrap;
+          justify-content: space-between;
         }
+      }
     </style>
-</head>
+  </head>
 
-<body>
+  <body>
     <div id="video-container">
-        <video id="video-player" muted playsinline>
-        </video>
-        <div class="overlay-controls">
-            <div class="status-bar">
-                <div id="ws-status">WS: Ocioso</div>
-                <div id="rtc-status">WebRTC: Ocioso</div>
-            </div>
-            <div class="main-controls-container">
-                <div class="control-group">
-                    <div class="shoulder-buttons"><button data-action="l1">L1</button><button data-action="l2"
-                            data-type="axis">L2</button></div>
-                    <div class="control-group"><span class="label">Left Stick</span>
-                        <div id="left-stick" class="joystick-area">
-                            <div id="left-knob" class="joystick-knob"></div>
-                        </div>
-                    </div>
-                    <div class="control-group"><span class="label">D-Pad</span>
-                        <div class="dpad"><button data-action="dpad_up" class="game-button btn-up">▲</button><button
-                                data-action="dpad_left" class="game-button btn-left">◀</button><button
-                                data-action="dpad_right" class="game-button btn-right">▶</button><button
-                                data-action="dpad_down" class="game-button btn-down">▼</button></div>
-                    </div>
-                </div>
-                <div class="control-group">
-                    <div class="shoulder-buttons"><button data-action="r1">R1</button><button data-action="r2"
-                            data-type="axis">R2</button></div>
-                    <div class="control-group"><span class="label">Right Stick</span>
-                        <div id="right-stick" class="joystick-area">
-                            <div id="right-knob" class="joystick-knob"></div>
-                        </div>
-                    </div>
-                    <div class="control-group"><span class="label">Ação</span>
-                        <div class="xyba-cross"><button class="game-button btn-y" data-action="y">Y</button><button
-                                class="game-button btn-x" data-action="x">X</button><button class="game-button btn-a"
-                                data-action="a">A</button><button class="game-button btn-b" data-action="b">B</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="controls-bottom"><button data-action="back">Select</button><button
-                    data-action="start">Start</button></div>
+      <video
+        id="video-player"
+        muted
+        playsinline
+        poster="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyMCIgaGVpZ2h0PSIxMDgwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiMwMDAiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjI0IiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iMC4zZW0iPkNsaXF1ZSBwYXJhIGNvbWVnYXI8L3RleHQ+PC9zdmc+"
+      ></video>
+
+      <div class="loading-overlay" id="loading-overlay">
+        <div>Clique para iniciar a transmissão</div>
+        <div style="font-size: 0.8rem; margin-top: 10px">
+          Aguarde alguns segundos para a conexão
         </div>
+      </div>
+
+      <div class="error-message" id="error-message"></div>
+
+      <div class="overlay-controls" id="overlay-controls">
+        <div class="status-bar">
+          <div id="ws-status">WS: Ocioso</div>
+          <div id="rtc-status">WebRTC: Ocioso</div>
+          <div id="fps-counter">FPS: 0</div>
+        </div>
+        <div class="main-controls-container">
+          <div class="control-group">
+            <div class="shoulder-buttons">
+              <button data-action="l1">L1</button>
+              <button data-action="l2" data-type="axis">L2</button>
+            </div>
+            <div class="control-group">
+              <span class="label">Left Stick</span>
+              <div id="left-stick" class="joystick-area">
+                <div id="left-knob" class="joystick-knob"></div>
+              </div>
+            </div>
+            <div class="control-group">
+              <span class="label">D-Pad</span>
+              <div class="dpad">
+                <button data-action="dpad_up" class="game-button btn-up">
+                  ▲
+                </button>
+                <button data-action="dpad_left" class="game-button btn-left">
+                  ◀
+                </button>
+                <button data-action="dpad_right" class="game-button btn-right">
+                  ▶
+                </button>
+                <button data-action="dpad_down" class="game-button btn-down">
+                  ▼
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="control-group">
+            <div class="shoulder-buttons">
+              <button data-action="r1">R1</button>
+              <button data-action="r2" data-type="axis">R2</button>
+            </div>
+            <div class="control-group">
+              <span class="label">Right Stick</span>
+              <div id="right-stick" class="joystick-area">
+                <div id="right-knob" class="joystick-knob"></div>
+              </div>
+            </div>
+            <div class="control-group">
+              <span class="label">Ação</span>
+              <div class="xyba-cross">
+                <button class="game-button btn-y" data-action="y">Y</button>
+                <button class="game-button btn-x" data-action="x">X</button>
+                <button class="game-button btn-a" data-action="a">A</button>
+                <button class="game-button btn-b" data-action="b">B</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="controls-bottom">
+          <button data-action="back">Select</button>
+          <button data-action="start">Start</button>
+          <button id="fullscreen-btn">Fullscreen</button>
+        </div>
+      </div>
     </div>
 
     <script>
-        const controlsOverlay = document.querySelector('.overlay-controls');
-        const videoContainer = document.getElementById('video-container');
-        const videoEl = document.getElementById('video-player');
+      const controlsOverlay = document.getElementById("overlay-controls");
+      const loadingOverlay = document.getElementById("loading-overlay");
+      const errorMessage = document.getElementById("error-message");
+      const videoContainer = document.getElementById("video-container");
+      const videoEl = document.getElementById("video-player");
+      const fullscreenBtn = document.getElementById("fullscreen-btn");
 
-        // --- FUNÇÕES DE SETUP ---
-        function isTouchDevice() {
-            return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+      let isInitialized = false;
+      let ws = null;
+      let pc = null;
+      let fpsCounter = 0;
+      let lastFpsUpdate = 0;
+
+      // --- FUNÇÕES DE SETUP ---
+      function isTouchDevice() {
+        return "ontouchstart" in window || navigator.maxTouchPoints > 0;
+      }
+
+      function showError(message) {
+        errorMessage.textContent = message;
+        errorMessage.style.display = "block";
+        console.error(message);
+      }
+
+      function hideError() {
+        errorMessage.style.display = "none";
+      }
+
+      function updateFPS() {
+        fpsCounter++;
+        const now = performance.now();
+        if (now - lastFpsUpdate >= 1000) {
+          document.getElementById(
+            "fps-counter"
+          ).textContent = `FPS: ${fpsCounter}`;
+          fpsCounter = 0;
+          lastFpsUpdate = now;
         }
+        requestAnimationFrame(updateFPS);
+      }
 
-        function setupOnScreenControls(sendBinary, floatToInt16) {
-            console.log("Dispositivo de toque detectado. Habilitando controles na tela.");
-            controlsOverlay.style.display = 'flex';
+      function setupOnScreenControls(sendBinary, floatToInt16) {
+        console.log(
+          "Dispositivo de toque detectado. Habilitando controles na tela."
+        );
+        controlsOverlay.style.display = "flex";
 
-            const buttonMap = { a: 0, b: 1, x: 2, y: 3, l1: 4, r1: 5, back: 6, start: 7, dpad_up: 10, dpad_down: 11, dpad_left: 12, dpad_right: 13, l2: 4, r2: 5 };
-            document.querySelectorAll('button[data-action]').forEach(btn => { const action = btn.dataset.action; const buttonType = btn.dataset.type; if (buttonType === 'axis') { const axisId = buttonMap[action]; const sendPress = () => sendBinary(0, axisId, 32767); const sendRelease = () => sendBinary(0, axisId, 0); btn.addEventListener('mousedown', sendPress); btn.addEventListener('mouseup', sendRelease); btn.addEventListener('mouseleave', sendRelease); btn.addEventListener('touchstart', e => { e.preventDefault(); sendPress(); }, { passive: false }); btn.addEventListener('touchend', e => { e.preventDefault(); sendRelease(); }, { passive: false }); } else { const buttonId = buttonMap[action]; if (buttonId === undefined) return; const sendPress = () => sendBinary(1, buttonId, 1); const sendRelease = () => sendBinary(1, buttonId, 0); btn.addEventListener('mousedown', sendPress); btn.addEventListener('mouseup', sendRelease); btn.addEventListener('mouseleave', sendRelease); btn.addEventListener('touchstart', e => { e.preventDefault(); sendPress(); }, { passive: false }); btn.addEventListener('touchend', e => { e.preventDefault(); sendRelease(); }, { passive: false }); } });
-            function setupStick(stickId, knobId, axisXId, axisYId) { const stick = document.getElementById(stickId); if (!stick) return; const knob = document.getElementById(knobId); const size = 100, knobSize = 40, radius = (size - knobSize) / 2; let dragging = false, dragId = null; function setKnobPosition(x, y) { knob.style.left = (radius + x * radius) + "px"; knob.style.top = (radius - y * radius) + "px"; } function sendAxes(x, y) { sendBinary(0, axisXId, floatToInt16(x)); sendBinary(0, axisYId, floatToInt16(y)); } function handleMove(clientX, clientY) { const rect = stick.getBoundingClientRect(); let x = (clientX - rect.left - size / 2) / (size / 2); let y = (clientY - rect.top - size / 2) / (size / 2); const magnitude = Math.sqrt(x * x + y * y); if (magnitude > 1) { x /= magnitude; y /= magnitude; } setKnobPosition(x, -y); sendAxes(x, -y); } function reset() { dragging = false; dragId = null; setKnobPosition(0, 0); sendAxes(0, 0); } stick.addEventListener('mousedown', e => { dragging = true; handleMove(e.clientX, e.clientY); }); document.addEventListener('mousemove', e => { if (dragging) handleMove(e.clientX, e.clientY); }); document.addEventListener('mouseup', () => { if (dragging) reset(); }); stick.addEventListener('touchstart', e => { if (dragId === null) { e.preventDefault(); const touch = e.changedTouches[0]; dragId = touch.identifier; handleMove(touch.clientX, touch.clientY); } }, { passive: false }); document.addEventListener('touchmove', e => { if (dragId !== null) { for (let touch of e.changedTouches) { if (touch.identifier === dragId) { e.preventDefault(); handleMove(touch.clientX, touch.clientY); break; } } } }, { passive: false }); document.addEventListener('touchend', e => { if (dragId !== null) { for (let touch of e.changedTouches) { if (touch.identifier === dragId) { e.preventDefault(); reset(); break; } } } }, { passive: false }); reset(); }
-            setupStick("left-stick", "left-knob", 0, 1);
-            setupStick("right-stick", "right-knob", 2, 3);
-        }
+        const buttonMap = {
+          a: 0,
+          b: 1,
+          x: 2,
+          y: 3,
+          l1: 4,
+          r1: 5,
+          back: 6,
+          start: 7,
+          dpad_up: 10,
+          dpad_down: 11,
+          dpad_left: 12,
+          dpad_right: 13,
+        };
 
-        function setupGamepadAPI(sendBinary, floatToInt16) {
-            console.log("Dispositivo sem toque detectado. Aguardando gamepad físico...");
-            let previousGamepadState = {};
-            let gamepadIndex = null;
-            let animationFrameId = null;
-            function gameLoop() {
-                if (gamepadIndex === null) return;
-                const gamepad = navigator.getGamepads()[gamepadIndex];
-                if (!gamepad) return;
-                const deadzone = 0.1;
-                gamepad.axes.forEach((value, i) => { const prevValue = previousGamepadState.axes?.[i] || 0; if (Math.abs(value) < deadzone) value = 0; let finalValue = value; if (i === 1 || i === 3) { finalValue = -value; } if (value !== prevValue) { sendBinary(0, i, floatToInt16(finalValue)); } });
-                gamepad.buttons.forEach((button, i) => { const wasPressed = previousGamepadState.buttons?.[i]?.pressed || false; const isPressed = button.pressed; const value = button.value; const prevValue = previousGamepadState.buttons?.[i]?.value || 0; if (i === 6 || i === 7) { if (value !== prevValue) { const axisId = (i === 6) ? 4 : 5; sendBinary(0, axisId, floatToInt16(value)); } } else { if (isPressed !== wasPressed) { let buttonId = -1; switch (i) { case 0: buttonId = 0; break; case 1: buttonId = 1; break; case 2: buttonId = 2; break; case 3: buttonId = 3; break; case 4: buttonId = 4; break; case 5: buttonId = 5; break; case 8: buttonId = 6; break; case 9: buttonId = 7; break; case 10: buttonId = 8; break; case 11: buttonId = 9; break; case 12: buttonId = 10; break; case 13: buttonId = 11; break; case 14: buttonId = 12; break; case 15: buttonId = 13; break; } if (buttonId !== -1) { sendBinary(1, buttonId, isPressed ? 1 : 0); } } } });
-                previousGamepadState = { axes: [...gamepad.axes], buttons: gamepad.buttons.map(b => ({ pressed: b.pressed, value: b.value })) };
-                animationFrameId = requestAnimationFrame(gameLoop);
+        document.querySelectorAll("button[data-action]").forEach((btn) => {
+          const action = btn.dataset.action;
+          const buttonType = btn.dataset.type;
+
+          if (buttonType === "axis") {
+            const axisId = buttonMap[action];
+            if (axisId === undefined) return;
+
+            const sendPress = () => sendBinary(0, axisId, 32767);
+            const sendRelease = () => sendBinary(0, axisId, 0);
+
+            btn.addEventListener("mousedown", sendPress);
+            btn.addEventListener("mouseup", sendRelease);
+            btn.addEventListener("mouseleave", sendRelease);
+            btn.addEventListener(
+              "touchstart",
+              (e) => {
+                e.preventDefault();
+                sendPress();
+              },
+              { passive: false }
+            );
+            btn.addEventListener(
+              "touchend",
+              (e) => {
+                e.preventDefault();
+                sendRelease();
+              },
+              { passive: false }
+            );
+          } else {
+            const buttonId = buttonMap[action];
+            if (buttonId === undefined) return;
+
+            const sendPress = () => sendBinary(1, buttonId, 1);
+            const sendRelease = () => sendBinary(1, buttonId, 0);
+
+            btn.addEventListener("mousedown", sendPress);
+            btn.addEventListener("mouseup", sendRelease);
+            btn.addEventListener("mouseleave", sendRelease);
+            btn.addEventListener(
+              "touchstart",
+              (e) => {
+                e.preventDefault();
+                sendPress();
+              },
+              { passive: false }
+            );
+            btn.addEventListener(
+              "touchend",
+              (e) => {
+                e.preventDefault();
+                sendRelease();
+              },
+              { passive: false }
+            );
+          }
+        });
+
+        function setupStick(stickId, knobId, axisXId, axisYId) {
+          const stick = document.getElementById(stickId);
+          if (!stick) return;
+
+          const knob = document.getElementById(knobId);
+          const size = stick.offsetWidth;
+          const knobSize = knob.offsetWidth;
+          const radius = (size - knobSize) / 2;
+          let dragging = false,
+            dragId = null;
+
+          function setKnobPosition(x, y) {
+            knob.style.left = radius + x * radius + "px";
+            knob.style.top = radius - y * radius + "px";
+          }
+
+          function sendAxes(x, y) {
+            sendBinary(0, axisXId, floatToInt16(x));
+            sendBinary(0, axisYId, floatToInt16(y));
+          }
+
+          function handleMove(clientX, clientY) {
+            const rect = stick.getBoundingClientRect();
+            let x = (clientX - rect.left - size / 2) / (size / 2);
+            let y = (clientY - rect.top - size / 2) / (size / 2);
+
+            const magnitude = Math.sqrt(x * x + y * y);
+            if (magnitude > 1) {
+              x /= magnitude;
+              y /= magnitude;
             }
-            window.addEventListener("gamepadconnected", (e) => { console.log(`Gamepad conectado: ${e.gamepad.id}.`); if (gamepadIndex === null) { gamepadIndex = e.gamepad.index; gameLoop(); } });
-            window.addEventListener("gamepaddisconnected", (e) => { console.log(`Gamepad desconectado: ${e.gamepad.id}.`); if (gamepadIndex === e.gamepad.index) { gamepadIndex = null; cancelAnimationFrame(animationFrameId); } });
+
+            setKnobPosition(x, -y);
+            sendAxes(x, -y);
+          }
+
+          function reset() {
+            dragging = false;
+            dragId = null;
+            setKnobPosition(0, 0);
+            sendAxes(0, 0);
+          }
+
+          stick.addEventListener("mousedown", (e) => {
+            dragging = true;
+            handleMove(e.clientX, e.clientY);
+          });
+
+          document.addEventListener("mousemove", (e) => {
+            if (dragging) handleMove(e.clientX, e.clientY);
+          });
+
+          document.addEventListener("mouseup", () => {
+            if (dragging) reset();
+          });
+
+          stick.addEventListener(
+            "touchstart",
+            (e) => {
+              if (dragId === null) {
+                e.preventDefault();
+                const touch = e.changedTouches[0];
+                dragId = touch.identifier;
+                handleMove(touch.clientX, touch.clientY);
+              }
+            },
+            { passive: false }
+          );
+
+          document.addEventListener(
+            "touchmove",
+            (e) => {
+              if (dragId !== null) {
+                for (let touch of e.changedTouches) {
+                  if (touch.identifier === dragId) {
+                    e.preventDefault();
+                    handleMove(touch.clientX, touch.clientY);
+                    break;
+                  }
+                }
+              }
+            },
+            { passive: false }
+          );
+
+          document.addEventListener(
+            "touchend",
+            (e) => {
+              if (dragId !== null) {
+                for (let touch of e.changedTouches) {
+                  if (touch.identifier === dragId) {
+                    e.preventDefault();
+                    reset();
+                    break;
+                  }
+                }
+              }
+            },
+            { passive: false }
+          );
+
+          reset();
         }
 
-        function initializeApp() {
-            alert("Primeiro clique detectado. Inicializando o sistema...");
-            videoEl.controls = false;
-            videoEl.removeAttribute('poster');
-            videoContainer.style.cursor = 'none';
-            videoEl.addEventListener('playing', () => { videoContainer.requestFullscreen().catch(err => { console.warn(`Aviso: Não foi possível entrar em fullscreen: ${err.message}`); }); });
+        setupStick("left-stick", "left-knob", 0, 1);
+        setupStick("right-stick", "right-knob", 2, 3);
+      }
 
-            const wsStatusEl = document.getElementById('ws-status');
-            const rtcStatusEl = document.getElementById('rtc-status');
-            const wsUrl = `ws://${window.location.hostname}:9000`;
-            const ws = new WebSocket(wsUrl);
-            ws.binaryType = "arraybuffer";
-            ws.onopen = () => { if (wsStatusEl) wsStatusEl.textContent = "WS: Conectado"; };
-            ws.onclose = () => { if (wsStatusEl) wsStatusEl.textContent = "WS: Desconectado"; };
-            ws.onerror = () => { if (wsStatusEl) wsStatusEl.textContent = "WS: Erro"; };
+      function setupGamepadAPI(sendBinary, floatToInt16) {
+        console.log(
+          "Dispositivo sem toque detectado. Aguardando gamepad físico..."
+        );
+        let previousGamepadState = {};
+        let gamepadIndex = null;
+        let animationFrameId = null;
 
-            function sendBinary(tipo, id, value) { if (ws.readyState !== WebSocket.OPEN) return; const buf = new ArrayBuffer(4); const view = new DataView(buf); view.setUint8(0, tipo); view.setUint8(1, id); view.setInt16(2, value, true); ws.send(buf); }
-            function floatToInt16(v) { return Math.round(Math.max(-1, Math.min(1, v)) * 32767); }
+        function gameLoop() {
+          if (gamepadIndex === null) return;
 
-            // --- DETECÇÃO DE TOQUE E ROTEAMENTO ---
-            if (isTouchDevice()) {
-                setupOnScreenControls(sendBinary, floatToInt16);
+          const gamepad = navigator.getGamepads()[gamepadIndex];
+          if (!gamepad) return;
+
+          const deadzone = 0.1;
+
+          // Processar eixos
+          gamepad.axes.forEach((value, i) => {
+            const prevValue = previousGamepadState.axes?.[i] || 0;
+            if (Math.abs(value) < deadzone) value = 0;
+
+            let finalValue = value;
+            if (i === 1 || i === 3) {
+              finalValue = -value;
+            }
+
+            if (Math.abs(value - prevValue) > 0.01) {
+              sendBinary(0, i, floatToInt16(finalValue));
+            }
+          });
+
+          // Processar botões
+          gamepad.buttons.forEach((button, i) => {
+            const wasPressed =
+              previousGamepadState.buttons?.[i]?.pressed || false;
+            const isPressed = button.pressed;
+            const value = button.value;
+            const prevValue = previousGamepadState.buttons?.[i]?.value || 0;
+
+            if (i === 6 || i === 7) {
+              // Gatilhos como eixos
+              if (Math.abs(value - prevValue) > 0.01) {
+                const axisId = i === 6 ? 4 : 5;
+                sendBinary(0, axisId, floatToInt16(value));
+              }
             } else {
-                setupGamepadAPI(sendBinary, floatToInt16);
+              if (isPressed !== wasPressed) {
+                let buttonId = -1;
+                switch (i) {
+                  case 0:
+                    buttonId = 0;
+                    break; // A
+                  case 1:
+                    buttonId = 1;
+                    break; // B
+                  case 2:
+                    buttonId = 2;
+                    break; // X
+                  case 3:
+                    buttonId = 3;
+                    break; // Y
+                  case 4:
+                    buttonId = 4;
+                    break; // L1
+                  case 5:
+                    buttonId = 5;
+                    break; // R1
+                  case 8:
+                    buttonId = 6;
+                    break; // Select
+                  case 9:
+                    buttonId = 7;
+                    break; // Start
+                  case 12:
+                    buttonId = 10;
+                    break; // D-pad up
+                  case 13:
+                    buttonId = 11;
+                    break; // D-pad down
+                  case 14:
+                    buttonId = 12;
+                    break; // D-pad left
+                  case 15:
+                    buttonId = 13;
+                    break; // D-pad right
+                }
+                if (buttonId !== -1) {
+                  sendBinary(1, buttonId, isPressed ? 1 : 0);
+                }
+              }
             }
+          });
 
-            const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
-            const pc = new RTCPeerConnection(configuration);
-            pc.addTransceiver('video', { direction: 'recvonly' });
-            pc.onconnectionstatechange = () => { if (rtcStatusEl) rtcStatusEl.textContent = `WebRTC: ${pc.connectionState}`; };
-            pc.ontrack = e => { if (videoEl.srcObject !== e.streams[0]) { videoEl.srcObject = e.streams[0]; videoEl.play().catch(err => console.error("Erro ao tocar vídeo no ontrack:", err)); } };
-            async function negotiate() { const iceGatheringPromise = new Promise(resolve => { pc.onicecandidate = e => e.candidate === null && resolve(); }); const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await iceGatheringPromise; if (rtcStatusEl) rtcStatusEl.textContent = 'WebRTC: Negociando...'; const finalOffer = pc.localDescription; const res = await fetch('/offer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sdp: finalOffer.sdp, codec: "amfh264enc", width: 1920, height: 1080, fps: 60 }) }); if (!res.ok) { if (rtcStatusEl) rtcStatusEl.textContent = `WebRTC: Erro (${res.status})`; return; } const answer = await res.json(); await pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp }); }
-            negotiate().catch(err => { console.error("Falha na negociação WebRTC:", err); if (rtcStatusEl) rtcStatusEl.textContent = 'WebRTC: Falha Crítica'; });
+          previousGamepadState = {
+            axes: [...gamepad.axes],
+            buttons: gamepad.buttons.map((b) => ({
+              pressed: b.pressed,
+              value: b.value,
+            })),
+          };
+
+          animationFrameId = requestAnimationFrame(gameLoop);
         }
 
+        window.addEventListener("gamepadconnected", (e) => {
+          console.log(`Gamepad conectado: ${e.gamepad.id}.`);
+          if (gamepadIndex === null) {
+            gamepadIndex = e.gamepad.index;
+            gameLoop();
+          }
+        });
 
-        videoContainer.addEventListener('click', initializeApp, { once: true });
+        window.addEventListener("gamepaddisconnected", (e) => {
+          console.log(`Gamepad desconectado: ${e.gamepad.id}.`);
+          if (gamepadIndex === e.gamepad.index) {
+            gamepadIndex = null;
+            cancelAnimationFrame(animationFrameId);
+          }
+        });
+      }
+
+      async function initializeApp() {
+        if (isInitialized) return;
+        isInitialized = true;
+
+        loadingOverlay.innerHTML = "<div>Conectando...</div>";
+        hideError();
+
+        try {
+          // Iniciar contador FPS
+          updateFPS();
+
+          // Configurar WebSocket para controles
+          const wsUrl = `ws://${window.location.hostname}:9000`;
+          ws = new WebSocket(wsUrl);
+          ws.binaryType = "arraybuffer";
+
+          const wsStatusEl = document.getElementById("ws-status");
+          const rtcStatusEl = document.getElementById("rtc-status");
+
+          ws.onopen = () => {
+            if (wsStatusEl) wsStatusEl.textContent = "WS: Conectado";
+            console.log("WebSocket conectado para controles");
+          };
+
+          ws.onclose = () => {
+            if (wsStatusEl) wsStatusEl.textContent = "WS: Desconectado";
+            showError("Conexão com servidor perdida. Recarregue a página.");
+          };
+
+          ws.onerror = (error) => {
+            if (wsStatusEl) wsStatusEl.textContent = "WS: Erro";
+            showError(
+              "Erro na conexão com servidor. Verifique se o servidor Python está rodando."
+            );
+            console.error("WebSocket error:", error);
+          };
+
+          function sendBinary(tipo, id, value) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              const buf = new ArrayBuffer(4);
+              const view = new DataView(buf);
+              view.setUint8(0, tipo);
+              view.setUint8(1, id);
+              view.setInt16(2, value, true);
+              ws.send(buf);
+            }
+          }
+
+          function floatToInt16(v) {
+            return Math.round(Math.max(-1, Math.min(1, v)) * 32767);
+          }
+
+          // Configurar controles baseado no tipo de dispositivo
+          if (isTouchDevice()) {
+            setupOnScreenControls(sendBinary, floatToInt16);
+          } else {
+            setupGamepadAPI(sendBinary, floatToInt16);
+          }
+
+          // Configurar WebRTC para vídeo
+          const configuration = {
+            iceServers: [
+              { urls: "stun:stun.l.google.com:19302" },
+              { urls: "stun:stun1.l.google.com:19302" },
+            ],
+          };
+
+          pc = new RTCPeerConnection(configuration);
+
+          // Configurar para receber apenas vídeo
+          pc.addTransceiver("video", { direction: "recvonly" });
+
+          pc.onconnectionstatechange = () => {
+            if (rtcStatusEl) {
+              rtcStatusEl.textContent = `WebRTC: ${pc.connectionState}`;
+            }
+
+            if (pc.connectionState === "connected") {
+              loadingOverlay.style.display = "none";
+              videoContainer.style.cursor = "none";
+            } else if (pc.connectionState === "failed") {
+              showError("Falha na conexão de vídeo. Recarregue a página.");
+            }
+          };
+
+          pc.ontrack = (event) => {
+            console.log("Recebendo stream de vídeo");
+            if (event.streams && event.streams[0]) {
+              videoEl.srcObject = event.streams[0];
+              videoEl.play().catch((err) => {
+                console.error("Erro ao reproduzir vídeo:", err);
+                showError("Erro ao reproduzir vídeo: " + err.message);
+              });
+            }
+          };
+
+          // Negociar conexão WebRTC
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          // Aguardar gathering de ICE candidates
+          await new Promise((resolve) => {
+            if (pc.iceGatheringState === "complete") {
+              resolve();
+            } else {
+              pc.onicegatheringstatechange = () => {
+                if (pc.iceGatheringState === "complete") {
+                  resolve();
+                }
+              };
+            }
+          });
+
+          if (rtcStatusEl) rtcStatusEl.textContent = "WebRTC: Negociando...";
+
+          const response = await fetch("/offer", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              sdp: pc.localDescription.sdp,
+              codec: "h264",
+              width: 1920,
+              height: 1080,
+              fps: 60,
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const answer = await response.json();
+          await pc.setRemoteDescription(answer);
+
+          console.log("Conexão WebRTC estabelecida com sucesso");
+        } catch (error) {
+          console.error("Erro na inicialização:", error);
+          showError("Erro ao conectar: " + error.message);
+          loadingOverlay.innerHTML =
+            "<div>Erro na conexão. Clique para tentar novamente.</div>";
+          isInitialized = false;
+        }
+      }
+
+      // Configurar botão fullscreen
+      fullscreenBtn.addEventListener("click", () => {
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch((err) => {
+            console.warn("Erro ao sair do fullscreen:", err);
+          });
+        } else {
+          videoContainer.requestFullscreen().catch((err) => {
+            console.warn("Erro ao entrar em fullscreen:", err);
+          });
+        }
+      });
+
+      // Event listener para iniciar com clique
+      videoContainer.addEventListener("click", () => {
+        if (!isInitialized) {
+          initializeApp();
+        }
+      });
+
+      // Também permitir iniciar com toque em dispositivos touch
+      videoContainer.addEventListener(
+        "touchstart",
+        (e) => {
+          if (!isInitialized) {
+            e.preventDefault();
+            initializeApp();
+          }
+        },
+        { passive: false }
+      );
+
+      // Detectar se a página foi carregada com sucesso
+      window.addEventListener("load", () => {
+        console.log("Página carregada. Aguardando clique para iniciar.");
+      });
     </script>
-</body>
-
+  </body>
 </html>
