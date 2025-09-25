@@ -25,7 +25,7 @@ var (
 	pythonPath   = "python"
 	pythonScript = "gamepad-ws-server/src/server.py"
 
-	// Métricas
+	// Metrics
 	framesProcessed int64
 	framesDropped   int64
 	activeStreams   int32
@@ -45,6 +45,7 @@ type StreamSession struct {
 	FFmpegCmd *exec.Cmd
 	Cancel    context.CancelFunc
 	StartTime time.Time
+	mutex     sync.RWMutex
 }
 
 var (
@@ -53,37 +54,37 @@ var (
 )
 
 func main() {
-	// Configurar logging
+	// Setup logging
 	logFile, err := os.OpenFile("chimera-go.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
-		log.Fatalf("Erro ao abrir arquivo de log: %v", err)
+		log.Fatalf("Error opening log file: %v", err)
 	}
 	defer logFile.Close()
 	multiWriter := io.MultiWriter(os.Stdout, logFile)
 	log.SetOutput(multiWriter)
-	log.Println("--- Servidor Iniciado ---")
+	log.Println("--- Server Started ---")
 
-	// Iniciar monitoramento de métricas
+	// Start monitoring goroutines
 	go logMetrics()
 	go cleanupStaleSessions()
 
-	// Inicia o servidor Python
+	// Start Python server
 	cmdPython := exec.Command(pythonPath, pythonScript)
 	cmdPython.Stdout = multiWriter
 	cmdPython.Stderr = multiWriter
 	if err := cmdPython.Start(); err != nil {
-		log.Fatalf("[Go] Erro ao iniciar server.py: %v", err)
+		log.Fatalf("[Go] Error starting server.py: %v", err)
 	}
-	log.Printf("[Go] server.py iniciado com PID: %d", cmdPython.Process.Pid)
+	log.Printf("[Go] server.py started with PID: %d", cmdPython.Process.Pid)
 
-	// Garante encerramento do Python no Ctrl+C
+	// Graceful shutdown on Ctrl+C
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigs
-		log.Println("Sinal de encerramento recebido. Desligando...")
+		log.Println("Shutdown signal received. Shutting down...")
 
-		// Encerrar todas as sessões ativas
+		// Cleanup all active sessions
 		cleanupAllSessions()
 
 		if cmdPython.Process != nil {
@@ -92,92 +93,104 @@ func main() {
 		os.Exit(0)
 	}()
 
-	// Servidor HTTP
+	// HTTP server setup
 	httpAddr := ":8080"
 	http.Handle("/", http.FileServer(http.Dir("./web")))
 	http.HandleFunc("/offer", handleOffer)
 	http.HandleFunc("/stats", handleStats)
 	http.HandleFunc("/sessions", handleSessions)
 
-	log.Printf("[Go] Servidor HTTP rodando em http://localhost%s", httpAddr)
+	log.Printf("[Go] HTTP server running on http://localhost%s", httpAddr)
 	if err := http.ListenAndServe(httpAddr, nil); err != nil {
-		log.Printf("Erro fatal no servidor HTTP: %v", err)
+		log.Printf("Fatal HTTP server error: %v", err)
 	}
 }
 
-// Função corrigida para scan de NALUs
+// Fixed NALU scanner
 func scanNALUs(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	if len(data) == 0 {
-		if atEOF {
-			return 0, nil, nil
+	if len(data) < 4 {
+		if atEOF && len(data) > 0 {
+			return len(data), data, nil
 		}
 		return 0, nil, nil
 	}
 
-	// Procura por start codes: 0x00000001 ou 0x000001
-	for i := 0; i < len(data)-3; i++ {
-		// Verifica por 0x00000001
-		if i+3 < len(data) && data[i] == 0x00 && data[i+1] == 0x00 &&
-			data[i+2] == 0x00 && data[i+3] == 0x01 {
+	// Look for start codes: 0x00000001 or 0x000001
+	for i := 0; i <= len(data)-4; i++ {
+		// Check for 0x00000001
+		if data[i] == 0x00 && data[i+1] == 0x00 && data[i+2] == 0x00 && data[i+3] == 0x01 {
 			if i > 0 {
 				return i, data[:i], nil
 			}
+			// Found start code at beginning, look for next one
+			for j := i + 4; j <= len(data)-4; j++ {
+				if data[j] == 0x00 && data[j+1] == 0x00 &&
+					((data[j+2] == 0x00 && data[j+3] == 0x01) ||
+						(j <= len(data)-3 && data[j+2] == 0x01)) {
+					return j, data[i:j], nil
+				}
+			}
 		}
 
-		// Verifica por 0x000001
-		if i+2 < len(data) && data[i] == 0x00 && data[i+1] == 0x00 &&
-			data[i+2] == 0x01 {
+		// Check for 0x000001 (if we haven't found 0x00000001)
+		if i <= len(data)-3 && data[i] == 0x00 && data[i+1] == 0x00 && data[i+2] == 0x01 {
 			if i > 0 {
 				return i, data[:i], nil
-			} else {
-				// Encontrou start code no início, procura próximo
-				for j := 3; j < len(data)-2; j++ {
-					if data[j] == 0x00 && data[j+1] == 0x00 &&
-						(data[j+2] == 0x01 || (j+3 < len(data) && data[j+2] == 0x00 && data[j+3] == 0x01)) {
-						return j, data[:j], nil
-					}
+			}
+			// Found start code at beginning, look for next one
+			for j := i + 3; j <= len(data)-3; j++ {
+				if data[j] == 0x00 && data[j+1] == 0x00 &&
+					(data[j+2] == 0x01 || (j <= len(data)-4 && data[j+2] == 0x00 && data[j+3] == 0x01)) {
+					return j, data[i:j], nil
 				}
 			}
 		}
 	}
 
-	if atEOF {
+	if atEOF && len(data) > 0 {
 		return len(data), data, nil
 	}
 
-	// Precisa de mais dados
 	return 0, nil, nil
 }
 
 func handleOffer(w http.ResponseWriter, r *http.Request) {
-	// Adicionar timeout para a requisição
-	_, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-
 	var req OfferRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Erro ao decodificar JSON", http.StatusBadRequest)
+		http.Error(w, "Error decoding JSON", http.StatusBadRequest)
 		return
 	}
-	log.Printf("Recebido offer com config: %dx%d @ %dfps", req.Width, req.Height, req.FPS)
+
+	// Validate input parameters
+	if req.Width <= 0 || req.Width > 3840 || req.Height <= 0 || req.Height > 2160 {
+		http.Error(w, "Invalid resolution", http.StatusBadRequest)
+		return
+	}
+	if req.FPS <= 0 || req.FPS > 144 {
+		http.Error(w, "Invalid FPS", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Received offer with config: %dx%d @ %dfps", req.Width, req.Height, req.FPS)
 
 	config := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
 			{URLs: []string{"stun:stun.l.google.com:19302"}},
+			{URLs: []string{"stun:stun1.l.google.com:19302"}},
 		},
 	}
 
 	pc, err := webrtc.NewPeerConnection(config)
 	if err != nil {
-		log.Printf("Erro ao criar PeerConnection: %v", err)
-		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
+		log.Printf("Error creating PeerConnection: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	// Criar contexto para esta sessão
+	// Create session context - DON'T tie it to request context
 	sessionCtx, sessionCancel := context.WithCancel(context.Background())
 
-	// Criar sessão
+	// Create session
 	sessionID := generateSessionID()
 	session := &StreamSession{
 		ID:        sessionID,
@@ -188,6 +201,7 @@ func handleOffer(w http.ResponseWriter, r *http.Request) {
 
 	registerSession(session)
 
+	// Setup connection state handler
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		log.Printf("[Session %s] WebRTC Connection State: %s", sessionID, state.String())
 
@@ -206,17 +220,26 @@ func handleOffer(w http.ResponseWriter, r *http.Request) {
 		}
 	})
 
+	// Create video track
 	videoTrack, err := webrtc.NewTrackLocalStaticSample(
-		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264},
+		webrtc.RTPCodecCapability{
+			MimeType:    webrtc.MimeTypeH264,
+			ClockRate:   90000,
+			Channels:    0,
+			SDPFmtpLine: "level-id=1;profile-level-id=42e01e;packetization-mode=1",
+		},
 		"video",
-		"pion",
+		"chimera-stream",
 	)
 	if err != nil {
-		sessionCancel()
-		unregisterSession(sessionID)
-		pc.Close()
-		log.Printf("Erro ao criar video track: %v", err)
-		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
+		cleanup := func() {
+			sessionCancel()
+			unregisterSession(sessionID)
+			pc.Close()
+		}
+		cleanup()
+		log.Printf("Error creating video track: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -224,28 +247,30 @@ func handleOffer(w http.ResponseWriter, r *http.Request) {
 		sessionCancel()
 		unregisterSession(sessionID)
 		pc.Close()
-		log.Printf("Erro ao adicionar track: %v", err)
-		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
+		log.Printf("Error adding track: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
+	// Set remote description
 	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: req.SDP}
 	if err := pc.SetRemoteDescription(offer); err != nil {
 		sessionCancel()
 		unregisterSession(sessionID)
 		pc.Close()
-		log.Printf("Erro ao set remote description: %v", err)
-		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
+		log.Printf("Error setting remote description: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
+	// Create and set answer
 	answer, err := pc.CreateAnswer(nil)
 	if err != nil {
 		sessionCancel()
 		unregisterSession(sessionID)
 		pc.Close()
-		log.Printf("Erro ao criar answer: %v", err)
-		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
+		log.Printf("Error creating answer: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -253,57 +278,82 @@ func handleOffer(w http.ResponseWriter, r *http.Request) {
 		sessionCancel()
 		unregisterSession(sessionID)
 		pc.Close()
-		log.Printf("Erro ao set local description: %v", err)
-		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
+		log.Printf("Error setting local description: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(answer); err != nil {
-		log.Printf("Erro ao enviar resposta: %v", err)
+		log.Printf("Error sending response: %v", err)
 	}
 
-	// Iniciar FFmpeg em goroutine separada
-	go startFFmpeg(sessionCtx, videoTrack, req.Width, req.Height, req.FPS, sessionID)
+	// Start FFmpeg in separate goroutine with proper delay
+	go func() {
+		// Wait a bit for WebRTC connection to be established
+		time.Sleep(500 * time.Millisecond)
+		startFFmpeg(sessionCtx, videoTrack, req.Width, req.Height, req.FPS, sessionID)
+	}()
 }
 
 func startFFmpeg(ctx context.Context, track *webrtc.TrackLocalStaticSample, width, height, fps int, sessionID string) {
-	log.Printf("[Session %s] Iniciando FFmpeg...", sessionID)
+	log.Printf("[Session %s] Starting FFmpeg...", sessionID)
 
+	// Check if context is already canceled
+	select {
+	case <-ctx.Done():
+		log.Printf("[Session %s] Context already canceled, not starting FFmpeg", sessionID)
+		return
+	default:
+	}
+
+	// Optimized FFmpeg arguments
 	args := []string{
 		"-f", "gdigrab",
 		"-framerate", fmt.Sprintf("%d", fps),
 		"-video_size", fmt.Sprintf("%dx%d", width, height),
 		"-i", "desktop",
-		"-c:v", "h264_nvenc",
-		"-b:v", "8M",
-		"-f", "rawvideo",
+		"-c:v", "libx264", // Use software encoder for compatibility
+		"-preset", "ultrafast",
+		"-tune", "zerolatency",
+		"-crf", "23",
+		"-maxrate", "8M",
+		"-bufsize", "16M",
+		"-g", fmt.Sprintf("%d", fps*2), // GOP size
+		"-keyint_min", fmt.Sprintf("%d", fps),
+		"-pix_fmt", "yuv420p",
+		"-f", "h264",
+		"-an", // No audio
 		"pipe:1",
 	}
 
+	// Create command with context
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		log.Printf("[Session %s] Erro ao criar stdout pipe: %v", sessionID, err)
+		log.Printf("[Session %s] Error creating stdout pipe: %v", sessionID, err)
 		return
 	}
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		log.Printf("[Session %s] Erro ao criar stderr pipe: %v", sessionID, err)
+		log.Printf("[Session %s] Error creating stderr pipe: %v", sessionID, err)
 		return
 	}
 
+	// Start FFmpeg
 	if err := cmd.Start(); err != nil {
-		log.Printf("[Session %s] Erro ao iniciar FFmpeg: %v", sessionID, err)
+		log.Printf("[Session %s] Error starting FFmpeg: %v", sessionID, err)
 		return
 	}
 
-	// Atualizar sessão com comando FFmpeg
+	log.Printf("[Session %s] FFmpeg started successfully (PID: %d)", sessionID, cmd.Process.Pid)
+
+	// Update session with FFmpeg command
 	updateSessionFFmpeg(sessionID, cmd)
 
-	// Log do FFmpeg
+	// FFmpeg logging goroutine
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
@@ -311,64 +361,84 @@ func startFFmpeg(ctx context.Context, track *webrtc.TrackLocalStaticSample, widt
 			case <-ctx.Done():
 				return
 			default:
-				log.Printf("[Session %s] FFMPEG: %s", sessionID, scanner.Text())
+				line := scanner.Text()
+				if len(line) > 0 && !bytes.Contains([]byte(line), []byte("frame=")) {
+					log.Printf("[Session %s] FFMPEG: %s", sessionID, line)
+				}
 			}
 		}
 	}()
 
-	// Buffer pool para otimização de memória
-	bufferPool := &sync.Pool{
-		New: func() interface{} {
-			return make([]byte, 4*1024*1024) // 4MB buffer
-		},
-	}
-
-	// Lê H.264 bruto e envia para WebRTC
+	// Video processing loop
+	const bufferSize = 1024 * 1024 // 1MB buffer
 	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(bufferPool.Get().([]byte), 4*1024*1024)
+	buffer := make([]byte, bufferSize)
+	scanner.Buffer(buffer, bufferSize*4)
 	scanner.Split(scanNALUs)
 
 	frameDuration := time.Second / time.Duration(fps)
-	ticker := time.NewTicker(frameDuration)
-	defer ticker.Stop()
+	lastFrameTime := time.Now()
+	frameCount := 0
 
 	for {
 		select {
 		case <-ctx.Done():
+			log.Printf("[Session %s] Context canceled, stopping FFmpeg", sessionID)
 			if cmd.Process != nil {
 				cmd.Process.Kill()
 			}
 			cmd.Wait()
-			log.Printf("[Session %s] FFmpeg encerrado.", sessionID)
 			return
 
-		case <-ticker.C:
+		default:
 			if scanner.Scan() {
 				nalu := scanner.Bytes()
 				if len(nalu) > 4 {
-					// Verificar se já tem start code, se não, adicionar
-					var naluWithStart []byte
-					if !bytes.HasPrefix(nalu, []byte{0x00, 0x00, 0x00, 0x01}) &&
-						!bytes.HasPrefix(nalu, []byte{0x00, 0x00, 0x01}) {
-						naluWithStart = append([]byte{0x00, 0x00, 0x00, 0x01}, nalu...)
-					} else {
-						naluWithStart = nalu
-					}
+					now := time.Now()
 
-					err := track.WriteSample(media.Sample{
-						Data:     naluWithStart,
-						Duration: frameDuration,
-					})
+					// Frame rate control
+					if now.Sub(lastFrameTime) >= frameDuration {
+						// Ensure NALU has start code
+						var naluWithStart []byte
+						if !bytes.HasPrefix(nalu, []byte{0x00, 0x00, 0x00, 0x01}) &&
+							!bytes.HasPrefix(nalu, []byte{0x00, 0x00, 0x01}) {
+							naluWithStart = append([]byte{0x00, 0x00, 0x00, 0x01}, nalu...)
+						} else {
+							naluWithStart = make([]byte, len(nalu))
+							copy(naluWithStart, nalu)
+						}
 
-					atomic.AddInt64(&framesProcessed, 1)
-					if err != nil {
-						atomic.AddInt64(&framesDropped, 1)
-						log.Printf("[Session %s] Erro ao escrever sample: %v", sessionID, err)
+						err := track.WriteSample(media.Sample{
+							Data:     naluWithStart,
+							Duration: frameDuration,
+						})
+
+						atomic.AddInt64(&framesProcessed, 1)
+						frameCount++
+
+						if err != nil {
+							atomic.AddInt64(&framesDropped, 1)
+							if frameCount%100 == 0 { // Log every 100th error
+								log.Printf("[Session %s] Error writing sample: %v", sessionID, err)
+							}
+						}
+
+						lastFrameTime = now
+
+						// Log progress every 5 seconds
+						if frameCount%300 == 0 {
+							log.Printf("[Session %s] Frames processed: %d", sessionID, frameCount)
+						}
 					}
 				}
 			} else {
 				if err := scanner.Err(); err != nil {
-					log.Printf("[Session %s] Erro no scanner: %v", sessionID, err)
+					log.Printf("[Session %s] Scanner error: %v", sessionID, err)
+				}
+
+				// Check if FFmpeg process is still running
+				if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+					log.Printf("[Session %s] FFmpeg process exited", sessionID)
 				}
 				return
 			}
@@ -376,27 +446,30 @@ func startFFmpeg(ctx context.Context, track *webrtc.TrackLocalStaticSample, widt
 	}
 }
 
-// Funções de gestão de sessões
+// Session management functions
 func generateSessionID() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+	return fmt.Sprintf("session_%d", time.Now().UnixNano())
 }
 
 func registerSession(session *StreamSession) {
 	sessionsLock.Lock()
 	defer sessionsLock.Unlock()
 	sessions[session.ID] = session
-	log.Printf("[Session %s] Sessão registrada. Total: %d", session.ID, len(sessions))
+	log.Printf("[Session %s] Session registered. Total: %d", session.ID, len(sessions))
 }
 
 func unregisterSession(sessionID string) {
 	sessionsLock.Lock()
 	defer sessionsLock.Unlock()
 	if session, exists := sessions[sessionID]; exists {
+		session.mutex.Lock()
 		if session.FFmpegCmd != nil && session.FFmpegCmd.Process != nil {
 			session.FFmpegCmd.Process.Kill()
 		}
+		session.mutex.Unlock()
+
 		delete(sessions, sessionID)
-		log.Printf("[Session %s] Sessão removida. Total: %d", sessionID, len(sessions))
+		log.Printf("[Session %s] Session removed. Total: %d", sessionID, len(sessions))
 	}
 }
 
@@ -404,26 +477,37 @@ func updateSessionFFmpeg(sessionID string, cmd *exec.Cmd) {
 	sessionsLock.Lock()
 	defer sessionsLock.Unlock()
 	if session, exists := sessions[sessionID]; exists {
+		session.mutex.Lock()
 		session.FFmpegCmd = cmd
+		session.mutex.Unlock()
 	}
 }
 
 func cleanupStaleSessions() {
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(2 * time.Minute)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		sessionsLock.Lock()
 		now := time.Now()
 		for id, session := range sessions {
-			// Remove sessões inativas por mais de 5 minutos
-			if now.Sub(session.StartTime) > 5*time.Minute &&
-				session.PC.ConnectionState() == webrtc.PeerConnectionStateDisconnected {
-				if session.FFmpegCmd != nil && session.FFmpegCmd.Process != nil {
-					session.FFmpegCmd.Process.Kill()
+			// Remove sessions inactive for more than 10 minutes
+			if now.Sub(session.StartTime) > 10*time.Minute {
+				state := session.PC.ConnectionState()
+				if state == webrtc.PeerConnectionStateDisconnected ||
+					state == webrtc.PeerConnectionStateFailed ||
+					state == webrtc.PeerConnectionStateClosed {
+
+					session.Cancel()
+					session.mutex.RLock()
+					if session.FFmpegCmd != nil && session.FFmpegCmd.Process != nil {
+						session.FFmpegCmd.Process.Kill()
+					}
+					session.mutex.RUnlock()
+
+					delete(sessions, id)
+					log.Printf("[Session %s] Stale session removed", id)
 				}
-				delete(sessions, id)
-				log.Printf("[Session %s] Sessão stale removida", id)
 			}
 		}
 		sessionsLock.Unlock()
@@ -436,18 +520,21 @@ func cleanupAllSessions() {
 
 	for id, session := range sessions {
 		session.Cancel()
+		session.mutex.RLock()
 		if session.FFmpegCmd != nil && session.FFmpegCmd.Process != nil {
 			session.FFmpegCmd.Process.Kill()
 		}
+		session.mutex.RUnlock()
+
 		if session.PC != nil && session.PC.ConnectionState() != webrtc.PeerConnectionStateClosed {
 			session.PC.Close()
 		}
 		delete(sessions, id)
 	}
-	log.Printf("Todas as sessões encerradas. Total: %d", len(sessions))
+	log.Printf("All sessions terminated. Total: %d", len(sessions))
 }
 
-// Monitoramento e métricas
+// Monitoring and metrics
 func logMetrics() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -462,12 +549,12 @@ func logMetrics() {
 			dropRate = float64(dropped) / float64(processed) * 100
 		}
 
-		log.Printf("📊 Métricas: StreamsAtivos=%d, FramesProcessados=%d, FramesDropados=%d, TaxaDrop=%.2f%%",
+		log.Printf("📊 Metrics: ActiveStreams=%d, FramesProcessed=%d, FramesDropped=%d, DropRate=%.2f%%",
 			active, processed, dropped, dropRate)
 	}
 }
 
-// Handlers HTTP para monitoring
+// HTTP handlers for monitoring
 func handleStats(w http.ResponseWriter, r *http.Request) {
 	processed := atomic.LoadInt64(&framesProcessed)
 	dropped := atomic.LoadInt64(&framesDropped)
@@ -496,12 +583,16 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 
 	sessionInfo := make([]map[string]interface{}, 0, len(sessions))
 	for id, session := range sessions {
+		session.mutex.RLock()
+		hasFFmpeg := session.FFmpegCmd != nil
+		session.mutex.RUnlock()
+
 		info := map[string]interface{}{
 			"id":         id,
-			"start_time": session.StartTime,
+			"start_time": session.StartTime.Format(time.RFC3339),
 			"duration":   time.Since(session.StartTime).String(),
 			"state":      session.PC.ConnectionState().String(),
-			"has_ffmpeg": session.FFmpegCmd != nil,
+			"has_ffmpeg": hasFFmpeg,
 		}
 		sessionInfo = append(sessionInfo, info)
 	}
@@ -509,6 +600,7 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
 		"total_sessions": len(sessions),
 		"sessions":       sessionInfo,
+		"timestamp":      time.Now().Unix(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")

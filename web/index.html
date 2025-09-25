@@ -8,7 +8,7 @@
     />
     <title>Chimera - Game Stream</title>
     <style>
-      /* --- ESTILOS GERAIS E DE LAYOUT --- */
+      /* --- BASE STYLES AND LAYOUT --- */
       html,
       body {
         margin: 0;
@@ -17,8 +17,10 @@
         height: 100%;
         background: #000;
         overflow: hidden;
-        font-family: sans-serif;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         touch-action: none;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
 
       #video-container {
@@ -29,16 +31,18 @@
         display: flex;
         justify-content: center;
         align-items: center;
+        background: #000;
       }
 
       #video-player {
         width: 100%;
         height: 100%;
-        object-fit: cover;
+        object-fit: contain;
         background: #000;
+        border: none;
       }
 
-      /* --- ESTILOS DO OVERLAY DE CONTROLES --- */
+      /* --- OVERLAY CONTROLS --- */
       .overlay-controls {
         position: absolute;
         top: 0;
@@ -53,6 +57,7 @@
         align-items: stretch;
         padding: 0.25rem;
         box-sizing: border-box;
+        background: rgba(0, 0, 0, 0.1);
       }
 
       .overlay-controls * {
@@ -62,11 +67,32 @@
       .status-bar {
         display: flex;
         justify-content: center;
-        gap: 0.5rem;
-        padding: 0.25rem;
-        background: rgba(0, 0, 0, 0.3);
-        color: #d1d5db;
-        font-size: 0.7rem;
+        gap: 1rem;
+        padding: 0.5rem;
+        background: rgba(0, 0, 0, 0.7);
+        color: #e5e7eb;
+        font-size: 0.75rem;
+        border-radius: 0.5rem;
+        backdrop-filter: blur(10px);
+        font-weight: 500;
+      }
+
+      .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #ef4444;
+        transition: background-color 0.3s;
+      }
+
+      .status-dot.connected {
+        background: #10b981;
       }
 
       .main-controls-container {
@@ -74,8 +100,9 @@
         align-items: center;
         justify-content: space-between;
         flex-grow: 1;
-        padding: 0.5rem;
+        padding: 1rem;
         flex-wrap: wrap;
+        gap: 1rem;
       }
 
       .control-group {
@@ -84,50 +111,61 @@
         align-items: center;
         gap: 0.5rem;
         flex: 1 1 40%;
-        margin-bottom: 0.25rem;
+        margin-bottom: 0.5rem;
       }
 
       .label {
         color: white;
-        font-size: 0.65rem;
-        margin-bottom: 0.2rem;
+        font-size: 0.7rem;
+        margin-bottom: 0.25rem;
+        font-weight: 600;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
       }
 
       .joystick-area {
-        width: 60px;
-        height: 60px;
-        background: rgba(55, 65, 81, 0.46);
+        width: 70px;
+        height: 70px;
+        background: rgba(55, 65, 81, 0.8);
         border-radius: 50%;
         position: relative;
         display: flex;
         justify-content: center;
         align-items: center;
-        backdrop-filter: blur(5px);
+        backdrop-filter: blur(10px);
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        transition: transform 0.1s;
+      }
+
+      .joystick-area:active {
+        transform: scale(0.95);
       }
 
       .joystick-knob {
-        width: 25px;
-        height: 25px;
+        width: 28px;
+        height: 28px;
         border-radius: 50%;
         position: absolute;
         pointer-events: none;
-        box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+        transition: all 0.1s ease-out;
+        border: 2px solid rgba(255, 255, 255, 0.2);
       }
 
       #left-knob {
-        background: rgba(59, 130, 246, 0.66);
+        background: linear-gradient(135deg, #3b82f6, #1d4ed8);
       }
 
       #right-knob {
-        background: rgba(34, 197, 94, 0.66);
+        background: linear-gradient(135deg, #22c55e, #16a34a);
       }
 
       .game-button {
-        width: 38px;
-        height: 38px;
+        width: 42px;
+        height: 42px;
         border-radius: 50%;
         font-weight: bold;
-        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
         border: none;
         color: white;
         display: flex;
@@ -135,117 +173,107 @@
         justify-content: center;
         font-size: 0.9rem;
         cursor: pointer;
+        transition: all 0.1s;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      .game-button:active {
+        transform: scale(0.9);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
       }
 
       .dpad {
         display: grid;
-        width: 100px;
-        height: 100px;
+        width: 110px;
+        height: 110px;
         grid-template-areas: ". up ." "left . right" ". down .";
         grid-template-columns: 1fr 1fr 1fr;
         grid-template-rows: 1fr 1fr 1fr;
         align-items: center;
         justify-items: center;
+        gap: 2px;
       }
 
-      .dpad .btn-up {
-        grid-area: up;
-      }
-
-      .dpad .btn-left {
-        grid-area: left;
-      }
-
-      .dpad .btn-right {
-        grid-area: right;
-      }
-
-      .dpad .btn-down {
-        grid-area: down;
-      }
+      .dpad .btn-up { grid-area: up; }
+      .dpad .btn-left { grid-area: left; }
+      .dpad .btn-right { grid-area: right; }
+      .dpad .btn-down { grid-area: down; }
 
       .dpad button {
-        background: rgba(55, 65, 81, 0.53);
+        background: rgba(55, 65, 81, 0.8);
+        backdrop-filter: blur(10px);
       }
 
       .xyba-cross {
-        width: 100px;
-        height: 100px;
+        width: 110px;
+        height: 110px;
         display: grid;
         grid-template-areas: ". y ." "x a b" ". . .";
         grid-template-columns: 1fr 1fr 1fr;
         grid-template-rows: 1fr 1fr 1fr;
         align-items: center;
         justify-items: center;
+        gap: 2px;
       }
 
-      .xyba-cross .btn-y {
-        grid-area: y;
-        background-color: #fbbf24;
-        color: black;
-      }
-
-      .xyba-cross .btn-x {
-        grid-area: x;
-        background-color: #2563eb;
-        color: white;
-      }
-
-      .xyba-cross .btn-a {
-        grid-area: a;
-        background-color: #16a34a;
-        color: white;
-      }
-
-      .xyba-cross .btn-b {
-        grid-area: b;
-        background-color: #dc2626;
-        color: white;
-      }
+      .xyba-cross .btn-y { grid-area: y; background-color: #fbbf24; color: black; }
+      .xyba-cross .btn-x { grid-area: x; background-color: #2563eb; color: white; }
+      .xyba-cross .btn-a { grid-area: a; background-color: #16a34a; color: white; }
+      .xyba-cross .btn-b { grid-area: b; background-color: #dc2626; color: white; }
 
       .shoulder-buttons {
         display: flex;
-        gap: 0.3rem;
+        gap: 0.5rem;
         margin-bottom: 0.5rem;
       }
 
       .shoulder-buttons button {
-        width: 45px;
-        height: 28px;
-        border-radius: 6px;
-        background: rgba(55, 65, 81, 0.53);
+        width: 50px;
+        height: 32px;
+        border-radius: 8px;
+        background: rgba(55, 65, 81, 0.8);
         font-weight: bold;
         border: none;
         color: white;
-        font-size: 0.7rem;
+        font-size: 0.75rem;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        transition: all 0.1s;
       }
 
       .controls-bottom {
         display: flex;
         justify-content: center;
-        gap: 0.5rem;
-        padding-bottom: 0.25rem;
+        gap: 1rem;
+        padding: 0.5rem;
       }
 
       .controls-bottom button {
-        background: rgba(55, 65, 81, 0.66);
+        background: rgba(55, 65, 81, 0.8);
         color: white;
         font-weight: bold;
-        border-radius: 6px;
-        padding: 0.3rem 0.5rem;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-        font-size: 0.75rem;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        font-size: 0.8rem;
         border: none;
+        backdrop-filter: blur(10px);
+        transition: all 0.1s;
       }
 
-      /* Loading e mensagens de status */
+      .controls-bottom button:active {
+        transform: translateY(1px);
+      }
+
+      /* Loading and status messages */
       .loading-overlay {
         position: absolute;
         top: 0;
         left: 0;
         width: 100%;
         height: 100%;
-        background: rgba(0, 0, 0, 0.8);
+        background: rgba(0, 0, 0, 0.9);
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -253,6 +281,24 @@
         color: white;
         z-index: 20;
         font-size: 1.2rem;
+        text-align: center;
+        padding: 2rem;
+        box-sizing: border-box;
+      }
+
+      .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid #374151;
+        border-top: 3px solid #3b82f6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 1rem;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
       }
 
       .error-message {
@@ -263,65 +309,94 @@
         margin: 1rem;
         text-align: center;
         display: none;
+        z-index: 30;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        max-width: 90%;
       }
 
-      /* --- AJUSTES PARA TELAS PEQUENAS --- */
-      @media (max-width: 400px), (max-height: 700px) {
+      /* Connection quality indicator */
+      .quality-indicator {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+        font-size: 0.7rem;
+        display: none;
+        backdrop-filter: blur(10px);
+      }
+
+      /* --- RESPONSIVE DESIGN --- */
+      @media (max-width: 500px) or (max-height: 800px) {
         .main-controls-container {
           flex-wrap: wrap;
           justify-content: space-around;
+          gap: 0.5rem;
+          padding: 0.5rem;
         }
 
         .control-group {
           flex: 1 1 45%;
-          margin-bottom: 0.3rem;
+          margin-bottom: 0.5rem;
         }
 
         .joystick-area {
-          width: 50px;
-          height: 50px;
+          width: 60px;
+          height: 60px;
         }
 
         .joystick-knob {
-          width: 20px;
-          height: 20px;
+          width: 24px;
+          height: 24px;
         }
 
-        .dpad,
-        .xyba-cross {
-          width: 80px;
-          height: 80px;
+        .dpad, .xyba-cross {
+          width: 90px;
+          height: 90px;
         }
 
         .game-button {
-          width: 32px;
-          height: 32px;
-          font-size: 0.75rem;
+          width: 36px;
+          height: 36px;
+          font-size: 0.8rem;
         }
 
         .shoulder-buttons button {
-          width: 40px;
-          height: 25px;
-          font-size: 0.65rem;
-        }
-
-        .controls-bottom button {
-          padding: 0.25rem 0.5rem;
+          width: 45px;
+          height: 28px;
           font-size: 0.7rem;
         }
 
+        .controls-bottom button {
+          padding: 0.4rem 0.8rem;
+          font-size: 0.75rem;
+        }
+
         .status-bar {
-          font-size: 0.65rem;
-          padding: 0.2rem;
+          font-size: 0.7rem;
+          padding: 0.4rem;
+          gap: 0.5rem;
         }
       }
 
-      /* Ajuste para landscape */
-      @media (orientation: landscape) {
+      @media (orientation: landscape) and (max-height: 600px) {
         .main-controls-container {
           flex-direction: row;
-          flex-wrap: wrap;
+          flex-wrap: nowrap;
           justify-content: space-between;
+        }
+        
+        .status-bar {
+          padding: 0.25rem 0.5rem;
+        }
+        
+        .controls-bottom {
+          padding: 0.25rem;
         }
       }
     </style>
@@ -333,24 +408,38 @@
         id="video-player"
         muted
         playsinline
-        poster="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyMCIgaGVpZ2h0PSIxMDgwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiMwMDAiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjI0IiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iMC4zZW0iPkNsaXF1ZSBwYXJhIGNvbWVnYXI8L3RleHQ+PC9zdmc+"
+        poster="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyMCIgaGVpZ2h0PSIxMDgwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiMwMDAiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjI0IiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iMC4zZW0iPkNsaXF1ZSBwYXJhIGNvbWXDp2FyPC90ZXh0Pjwvc3ZnPg=="
       ></video>
 
       <div class="loading-overlay" id="loading-overlay">
-        <div>Clique para iniciar a transmissão</div>
-        <div style="font-size: 0.8rem; margin-top: 10px">
+        <div class="loading-spinner" style="display: none;"></div>
+        <div id="loading-text">Clique para iniciar a transmissão</div>
+        <div style="font-size: 0.9rem; margin-top: 1rem; opacity: 0.8">
           Aguarde alguns segundos para a conexão
         </div>
       </div>
 
       <div class="error-message" id="error-message"></div>
+      
+      <div class="quality-indicator" id="quality-indicator">
+        Qualidade: <span id="quality-text">-</span>
+      </div>
 
       <div class="overlay-controls" id="overlay-controls">
         <div class="status-bar">
-          <div id="ws-status">WS: Ocioso</div>
-          <div id="rtc-status">WebRTC: Ocioso</div>
-          <div id="fps-counter">FPS: 0</div>
+          <div class="status-indicator">
+            <div class="status-dot" id="ws-dot"></div>
+            <span id="ws-status">WS: Desconectado</span>
+          </div>
+          <div class="status-indicator">
+            <div class="status-dot" id="rtc-dot"></div>
+            <span id="rtc-status">WebRTC: Desconectado</span>
+          </div>
+          <div class="status-indicator">
+            <span id="fps-counter">FPS: 0</span>
+          </div>
         </div>
+        
         <div class="main-controls-container">
           <div class="control-group">
             <div class="shoulder-buttons">
@@ -366,21 +455,14 @@
             <div class="control-group">
               <span class="label">D-Pad</span>
               <div class="dpad">
-                <button data-action="dpad_up" class="game-button btn-up">
-                  ▲
-                </button>
-                <button data-action="dpad_left" class="game-button btn-left">
-                  ◀
-                </button>
-                <button data-action="dpad_right" class="game-button btn-right">
-                  ▶
-                </button>
-                <button data-action="dpad_down" class="game-button btn-down">
-                  ▼
-                </button>
+                <button data-action="dpad_up" class="game-button btn-up">▲</button>
+                <button data-action="dpad_left" class="game-button btn-left">◀</button>
+                <button data-action="dpad_right" class="game-button btn-right">▶</button>
+                <button data-action="dpad_down" class="game-button btn-down">▼</button>
               </div>
             </div>
           </div>
+          
           <div class="control-group">
             <div class="shoulder-buttons">
               <button data-action="r1">R1</button>
@@ -403,108 +485,193 @@
             </div>
           </div>
         </div>
+        
         <div class="controls-bottom">
           <button data-action="back">Select</button>
           <button data-action="start">Start</button>
           <button id="fullscreen-btn">Fullscreen</button>
+          <button id="reset-btn">Reset</button>
         </div>
       </div>
     </div>
 
     <script>
+      // DOM Elements
       const controlsOverlay = document.getElementById("overlay-controls");
       const loadingOverlay = document.getElementById("loading-overlay");
+      const loadingText = document.getElementById("loading-text");
+      const loadingSpinner = document.querySelector(".loading-spinner");
       const errorMessage = document.getElementById("error-message");
       const videoContainer = document.getElementById("video-container");
       const videoEl = document.getElementById("video-player");
       const fullscreenBtn = document.getElementById("fullscreen-btn");
+      const resetBtn = document.getElementById("reset-btn");
+      const qualityIndicator = document.getElementById("quality-indicator");
+      const qualityText = document.getElementById("quality-text");
 
+      // Status indicators
+      const wsStatus = document.getElementById("ws-status");
+      const rtcStatus = document.getElementById("rtc-status");
+      const fpsCounter = document.getElementById("fps-counter");
+      const wsDot = document.getElementById("ws-dot");
+      const rtcDot = document.getElementById("rtc-dot");
+
+      // Application state
       let isInitialized = false;
       let ws = null;
       let pc = null;
-      let fpsCounter = 0;
+      let fpsCounterValue = 0;
       let lastFpsUpdate = 0;
+      let connectionStartTime = 0;
+      let lastFrameTime = 0;
+      let frameCount = 0;
+      let reconnectAttempts = 0;
+      let maxReconnectAttempts = 5;
 
-      // --- FUNÇÕES DE SETUP ---
+      // Performance monitoring
+      let performanceMetrics = {
+        latency: 0,
+        packetsLost: 0,
+        packetsReceived: 0,
+        bytesReceived: 0
+      };
+
+      // Configuration
+      const config = {
+        video: {
+          width: window.innerWidth >= 1920 ? 1920 : 1280,
+          height: window.innerHeight >= 1080 ? 1080 : 720,
+          fps: 60
+        },
+        websocket: {
+          reconnectInterval: 2000,
+          heartbeatInterval: 30000
+        }
+      };
+
+      // --- UTILITY FUNCTIONS ---
       function isTouchDevice() {
         return "ontouchstart" in window || navigator.maxTouchPoints > 0;
       }
 
-      function showError(message) {
+      function showError(message, temporary = false) {
         errorMessage.textContent = message;
         errorMessage.style.display = "block";
         console.error(message);
+        
+        if (temporary) {
+          setTimeout(() => {
+            errorMessage.style.display = "none";
+          }, 5000);
+        }
       }
 
       function hideError() {
         errorMessage.style.display = "none";
       }
 
+      function updateStatus(type, status, connected = false) {
+        const statusEl = type === 'ws' ? wsStatus : rtcStatus;
+        const dotEl = type === 'ws' ? wsDot : rtcDot;
+        
+        statusEl.textContent = `${type.toUpperCase()}: ${status}`;
+        dotEl.className = `status-dot ${connected ? 'connected' : ''}`;
+      }
+
+      function updateLoadingState(text, showSpinner = false) {
+        loadingText.textContent = text;
+        loadingSpinner.style.display = showSpinner ? 'block' : 'none';
+      }
+
+      // Enhanced FPS counter with quality metrics
       function updateFPS() {
-        fpsCounter++;
+        fpsCounterValue++;
         const now = performance.now();
+        
         if (now - lastFpsUpdate >= 1000) {
-          document.getElementById(
-            "fps-counter"
-          ).textContent = `FPS: ${fpsCounter}`;
-          fpsCounter = 0;
+          fpsCounter.textContent = `FPS: ${fpsCounterValue}`;
+          
+          // Update quality indicator
+          updateQualityMetrics();
+          
+          fpsCounterValue = 0;
           lastFpsUpdate = now;
         }
         requestAnimationFrame(updateFPS);
       }
 
+      function updateQualityMetrics() {
+        if (!pc) return;
+        
+        pc.getStats().then(stats => {
+          stats.forEach(report => {
+            if (report.type === 'inbound-rtp' && report.kind === 'video') {
+              const packetsLost = report.packetsLost || 0;
+              const packetsReceived = report.packetsReceived || 0;
+              const bytesReceived = report.bytesReceived || 0;
+              
+              performanceMetrics = {
+                latency: report.jitter || 0,
+                packetsLost,
+                packetsReceived,
+                bytesReceived
+              };
+              
+              // Calculate quality score
+              const lossRate = packetsLost / Math.max(packetsReceived, 1);
+              let quality = 'Excelente';
+              
+              if (lossRate > 0.05) quality = 'Ruim';
+              else if (lossRate > 0.02) quality = 'Regular';
+              else if (lossRate > 0.01) quality = 'Boa';
+              
+              qualityText.textContent = quality;
+              qualityIndicator.style.display = 'block';
+            }
+          });
+        }).catch(err => {
+          console.warn('Error getting WebRTC stats:', err);
+        });
+      }
+
+      // --- GAMEPAD AND CONTROL HANDLING ---
       function setupOnScreenControls(sendBinary, floatToInt16) {
-        console.log(
-          "Dispositivo de toque detectado. Habilitando controles na tela."
-        );
+        console.log("Touch device detected. Enabling on-screen controls.");
         controlsOverlay.style.display = "flex";
 
         const buttonMap = {
-          a: 0,
-          b: 1,
-          x: 2,
-          y: 3,
-          l1: 4,
-          r1: 5,
-          back: 6,
-          start: 7,
-          dpad_up: 10,
-          dpad_down: 11,
-          dpad_left: 12,
-          dpad_right: 13,
+          a: 0, b: 1, x: 2, y: 3,
+          l1: 4, r1: 5,
+          back: 6, start: 7,
+          dpad_up: 10, dpad_down: 11,
+          dpad_left: 12, dpad_right: 13,
         };
 
+        // Button handlers
         document.querySelectorAll("button[data-action]").forEach((btn) => {
           const action = btn.dataset.action;
           const buttonType = btn.dataset.type;
 
           if (buttonType === "axis") {
-            const axisId = buttonMap[action];
-            if (axisId === undefined) return;
-
+            // Handle trigger buttons (L2/R2)
+            const axisId = action === 'l2' ? 4 : 5;
+            
             const sendPress = () => sendBinary(0, axisId, 32767);
             const sendRelease = () => sendBinary(0, axisId, 0);
 
             btn.addEventListener("mousedown", sendPress);
             btn.addEventListener("mouseup", sendRelease);
             btn.addEventListener("mouseleave", sendRelease);
-            btn.addEventListener(
-              "touchstart",
-              (e) => {
-                e.preventDefault();
-                sendPress();
-              },
-              { passive: false }
-            );
-            btn.addEventListener(
-              "touchend",
-              (e) => {
-                e.preventDefault();
-                sendRelease();
-              },
-              { passive: false }
-            );
+            btn.addEventListener("touchstart", (e) => {
+              e.preventDefault();
+              sendPress();
+            }, { passive: false });
+            btn.addEventListener("touchend", (e) => {
+              e.preventDefault();
+              sendRelease();
+            }, { passive: false });
           } else {
+            // Handle regular buttons
             const buttonId = buttonMap[action];
             if (buttonId === undefined) return;
 
@@ -514,51 +681,69 @@
             btn.addEventListener("mousedown", sendPress);
             btn.addEventListener("mouseup", sendRelease);
             btn.addEventListener("mouseleave", sendRelease);
-            btn.addEventListener(
-              "touchstart",
-              (e) => {
-                e.preventDefault();
-                sendPress();
-              },
-              { passive: false }
-            );
-            btn.addEventListener(
-              "touchend",
-              (e) => {
-                e.preventDefault();
-                sendRelease();
-              },
-              { passive: false }
-            );
+            btn.addEventListener("touchstart", (e) => {
+              e.preventDefault();
+              sendPress();
+            }, { passive: false });
+            btn.addEventListener("touchend", (e) => {
+              e.preventDefault();
+              sendRelease();
+            }, { passive: false });
           }
         });
 
+        // Enhanced joystick setup with improved precision
         function setupStick(stickId, knobId, axisXId, axisYId) {
           const stick = document.getElementById(stickId);
-          if (!stick) return;
-
           const knob = document.getElementById(knobId);
-          const size = stick.offsetWidth;
-          const knobSize = knob.offsetWidth;
+          
+          if (!stick || !knob) return;
+
+          const rect = stick.getBoundingClientRect();
+          const size = Math.min(rect.width, rect.height);
+          const knobSize = Math.min(knob.offsetWidth, knob.offsetHeight);
           const radius = (size - knobSize) / 2;
-          let dragging = false,
-            dragId = null;
+          
+          let dragging = false;
+          let dragId = null;
+          let animationFrame = null;
 
           function setKnobPosition(x, y) {
-            knob.style.left = radius + x * radius + "px";
-            knob.style.top = radius - y * radius + "px";
+            const clampedX = Math.max(-1, Math.min(1, x));
+            const clampedY = Math.max(-1, Math.min(1, y));
+            
+            knob.style.left = (radius + clampedX * radius) + "px";
+            knob.style.top = (radius - clampedY * radius) + "px";
           }
 
           function sendAxes(x, y) {
+            // Apply deadzone
+            const deadzone = 0.1;
+            const magnitude = Math.sqrt(x * x + y * y);
+            
+            if (magnitude < deadzone) {
+              x = 0;
+              y = 0;
+            } else {
+              // Scale to account for deadzone
+              const scale = (magnitude - deadzone) / (1 - deadzone);
+              x = (x / magnitude) * scale * Math.min(1, magnitude);
+              y = (y / magnitude) * scale * Math.min(1, magnitude);
+            }
+
             sendBinary(0, axisXId, floatToInt16(x));
             sendBinary(0, axisYId, floatToInt16(y));
           }
 
           function handleMove(clientX, clientY) {
             const rect = stick.getBoundingClientRect();
-            let x = (clientX - rect.left - size / 2) / (size / 2);
-            let y = (clientY - rect.top - size / 2) / (size / 2);
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            let x = (clientX - centerX) / radius;
+            let y = (clientY - centerY) / radius;
 
+            // Clamp to circle
             const magnitude = Math.sqrt(x * x + y * y);
             if (magnitude > 1) {
               x /= magnitude;
@@ -566,16 +751,26 @@
             }
 
             setKnobPosition(x, -y);
-            sendAxes(x, -y);
+            
+            // Throttle updates for performance
+            if (animationFrame) cancelAnimationFrame(animationFrame);
+            animationFrame = requestAnimationFrame(() => {
+              sendAxes(x, -y);
+            });
           }
 
           function reset() {
             dragging = false;
             dragId = null;
+            if (animationFrame) {
+              cancelAnimationFrame(animationFrame);
+              animationFrame = null;
+            }
             setKnobPosition(0, 0);
             sendAxes(0, 0);
           }
 
+          // Mouse events
           stick.addEventListener("mousedown", (e) => {
             dragging = true;
             handleMove(e.clientX, e.clientY);
@@ -589,51 +784,41 @@
             if (dragging) reset();
           });
 
-          stick.addEventListener(
-            "touchstart",
-            (e) => {
-              if (dragId === null) {
-                e.preventDefault();
-                const touch = e.changedTouches[0];
-                dragId = touch.identifier;
-                handleMove(touch.clientX, touch.clientY);
-              }
-            },
-            { passive: false }
-          );
+          // Touch events with multi-touch support
+          stick.addEventListener("touchstart", (e) => {
+            if (dragId === null && e.changedTouches.length > 0) {
+              e.preventDefault();
+              const touch = e.changedTouches[0];
+              dragId = touch.identifier;
+              handleMove(touch.clientX, touch.clientY);
+            }
+          }, { passive: false });
 
-          document.addEventListener(
-            "touchmove",
-            (e) => {
-              if (dragId !== null) {
-                for (let touch of e.changedTouches) {
-                  if (touch.identifier === dragId) {
-                    e.preventDefault();
-                    handleMove(touch.clientX, touch.clientY);
-                    break;
-                  }
+          document.addEventListener("touchmove", (e) => {
+            if (dragId !== null) {
+              for (let touch of e.changedTouches) {
+                if (touch.identifier === dragId) {
+                  e.preventDefault();
+                  handleMove(touch.clientX, touch.clientY);
+                  break;
                 }
               }
-            },
-            { passive: false }
-          );
+            }
+          }, { passive: false });
 
-          document.addEventListener(
-            "touchend",
-            (e) => {
-              if (dragId !== null) {
-                for (let touch of e.changedTouches) {
-                  if (touch.identifier === dragId) {
-                    e.preventDefault();
-                    reset();
-                    break;
-                  }
+          document.addEventListener("touchend", (e) => {
+            if (dragId !== null) {
+              for (let touch of e.changedTouches) {
+                if (touch.identifier === dragId) {
+                  e.preventDefault();
+                  reset();
+                  break;
                 }
               }
-            },
-            { passive: false }
-          );
+            }
+          }, { passive: false });
 
+          // Initialize
           reset();
         }
 
@@ -642,98 +827,78 @@
       }
 
       function setupGamepadAPI(sendBinary, floatToInt16) {
-        console.log(
-          "Dispositivo sem toque detectado. Aguardando gamepad físico..."
-        );
+        console.log("Desktop device detected. Setting up gamepad API...");
+        
         let previousGamepadState = {};
         let gamepadIndex = null;
         let animationFrameId = null;
 
         function gameLoop() {
-          if (gamepadIndex === null) return;
+          if (gamepadIndex === null) {
+            animationFrameId = requestAnimationFrame(gameLoop);
+            return;
+          }
 
           const gamepad = navigator.getGamepads()[gamepadIndex];
-          if (!gamepad) return;
+          if (!gamepad) {
+            animationFrameId = requestAnimationFrame(gameLoop);
+            return;
+          }
 
-          const deadzone = 0.1;
+          const deadzone = 0.08;
 
-          // Processar eixos
+          // Process axes with improved precision
           gamepad.axes.forEach((value, i) => {
             const prevValue = previousGamepadState.axes?.[i] || 0;
+            
+            // Apply deadzone
             if (Math.abs(value) < deadzone) value = 0;
 
+            // Invert Y axes for natural movement
             let finalValue = value;
             if (i === 1 || i === 3) {
               finalValue = -value;
             }
 
-            if (Math.abs(value - prevValue) > 0.01) {
+            // Only send if changed significantly
+            if (Math.abs(finalValue - prevValue) > 0.005) {
               sendBinary(0, i, floatToInt16(finalValue));
             }
           });
 
-          // Processar botões
+          // Process buttons with improved handling
           gamepad.buttons.forEach((button, i) => {
-            const wasPressed =
-              previousGamepadState.buttons?.[i]?.pressed || false;
+            const wasPressed = previousGamepadState.buttons?.[i]?.pressed || false;
             const isPressed = button.pressed;
             const value = button.value;
             const prevValue = previousGamepadState.buttons?.[i]?.value || 0;
 
+            // Handle triggers as axes
             if (i === 6 || i === 7) {
-              // Gatilhos como eixos
               if (Math.abs(value - prevValue) > 0.01) {
                 const axisId = i === 6 ? 4 : 5;
                 sendBinary(0, axisId, floatToInt16(value));
               }
             } else {
+              // Handle regular buttons
               if (isPressed !== wasPressed) {
-                let buttonId = -1;
-                switch (i) {
-                  case 0:
-                    buttonId = 0;
-                    break; // A
-                  case 1:
-                    buttonId = 1;
-                    break; // B
-                  case 2:
-                    buttonId = 2;
-                    break; // X
-                  case 3:
-                    buttonId = 3;
-                    break; // Y
-                  case 4:
-                    buttonId = 4;
-                    break; // L1
-                  case 5:
-                    buttonId = 5;
-                    break; // R1
-                  case 8:
-                    buttonId = 6;
-                    break; // Select
-                  case 9:
-                    buttonId = 7;
-                    break; // Start
-                  case 12:
-                    buttonId = 10;
-                    break; // D-pad up
-                  case 13:
-                    buttonId = 11;
-                    break; // D-pad down
-                  case 14:
-                    buttonId = 12;
-                    break; // D-pad left
-                  case 15:
-                    buttonId = 13;
-                    break; // D-pad right
-                }
-                if (buttonId !== -1) {
+                const buttonMapping = {
+                  0: 0, 1: 1, 2: 2, 3: 3,  // A, B, X, Y
+                  4: 4, 5: 5,              // L1, R1
+                  8: 6, 9: 7,              // Select, Start
+                  10: 8, 11: 9,            // L3, R3
+                  12: 10, 13: 11, 14: 12, 15: 13  // D-pad
+                };
+                
+                const buttonId = buttonMapping[i];
+                if (buttonId !== undefined) {
                   sendBinary(1, buttonId, isPressed ? 1 : 0);
                 }
               }
             }
           });
 
+          // Store current state
           previousGamepadState = {
             axes: [...gamepad.axes],
             buttons: gamepad.buttons.map((b) => ({
@@ -746,7 +911,7 @@
         }
 
         window.addEventListener("gamepadconnected", (e) => {
-          console.log(`Gamepad conectado: ${e.gamepad.id}.`);
+          console.log(`Gamepad connected: ${e.gamepad.id}`);
           if (gamepadIndex === null) {
             gamepadIndex = e.gamepad.index;
             gameLoop();
@@ -754,56 +919,217 @@
         });
 
         window.addEventListener("gamepaddisconnected", (e) => {
-          console.log(`Gamepad desconectado: ${e.gamepad.id}.`);
+          console.log(`Gamepad disconnected: ${e.gamepad.id}`);
           if (gamepadIndex === e.gamepad.index) {
             gamepadIndex = null;
-            cancelAnimationFrame(animationFrameId);
+            if (animationFrameId) {
+              cancelAnimationFrame(animationFrameId);
+              animationFrameId = null;
+            }
           }
+        });
+
+        // Start checking for gamepads
+        gameLoop();
+      }
+
+      // --- WEBSOCKET HANDLING ---
+      async function setupWebSocket(sendBinary) {
+        const wsUrl = `ws://${window.location.hostname}:9000`;
+        
+        return new Promise((resolve, reject) => {
+          ws = new WebSocket(wsUrl);
+          ws.binaryType = "arraybuffer";
+
+          const timeout = setTimeout(() => {
+            ws.close();
+            reject(new Error("WebSocket connection timeout"));
+          }, 10000);
+
+          ws.onopen = () => {
+            clearTimeout(timeout);
+            updateStatus('ws', 'Conectado', true);
+            console.log("WebSocket connected for controls");
+            
+            // Send heartbeat periodically
+            setInterval(() => {
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send("ping");
+              }
+            }, config.websocket.heartbeatInterval);
+            
+            resolve();
+          };
+
+          ws.onclose = (event) => {
+            clearTimeout(timeout);
+            updateStatus('ws', 'Desconectado', false);
+            
+            if (event.wasClean) {
+              console.log("WebSocket closed cleanly");
+            } else {
+              console.warn("WebSocket closed unexpectedly");
+              if (reconnectAttempts < maxReconnectAttempts) {
+                setTimeout(() => {
+                  reconnectAttempts++;
+                  console.log(`Attempting WebSocket reconnection (${reconnectAttempts}/${maxReconnectAttempts})`);
+                  setupWebSocket(sendBinary).catch(console.error);
+                }, config.websocket.reconnectInterval);
+              } else {
+                showError("Conexão com servidor perdida. Recarregue a página.", true);
+              }
+            }
+          };
+
+          ws.onerror = (error) => {
+            clearTimeout(timeout);
+            updateStatus('ws', 'Erro', false);
+            console.error("WebSocket error:", error);
+            reject(error);
+          };
+
+          ws.onmessage = (event) => {
+            if (event.data === "pong") {
+              // Handle heartbeat response
+              return;
+            }
+            console.log("Received message:", event.data);
+          };
         });
       }
 
+      // --- WEBRTC HANDLING ---
+      async function setupWebRTC() {
+        const configuration = {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:stun2.l.google.com:19302" }
+          ],
+          iceCandidatePoolSize: 10
+        };
+
+        pc = new RTCPeerConnection(configuration);
+
+        // Add transceiver for video with specific constraints
+        pc.addTransceiver("video", { 
+          direction: "recvonly",
+          streams: []
+        });
+
+        // Enhanced connection state handling
+        pc.onconnectionstatechange = () => {
+          const state = pc.connectionState;
+          updateStatus('rtc', state, state === 'connected');
+          
+          console.log(`WebRTC connection state: ${state}`);
+          
+          switch (state) {
+            case 'connected':
+              loadingOverlay.style.display = "none";
+              videoContainer.style.cursor = "none";
+              connectionStartTime = performance.now();
+              break;
+            case 'disconnected':
+              showError("Conexão de vídeo perdida. Tentando reconectar...", true);
+              break;
+            case 'failed':
+              showError("Falha na conexão de vídeo. Recarregue a página.");
+              break;
+          }
+        };
+
+        // Enhanced track handling
+        pc.ontrack = (event) => {
+          console.log("Receiving video stream");
+          
+          if (event.streams && event.streams[0]) {
+            videoEl.srcObject = event.streams[0];
+            
+            // Add event listeners for video element
+            videoEl.onloadstart = () => console.log("Video loading started");
+            videoEl.oncanplay = () => console.log("Video can start playing");
+            videoEl.onplaying = () => console.log("Video started playing");
+            
+            videoEl.play().catch((err) => {
+              console.error("Error playing video:", err);
+              showError("Erro ao reproduzir vídeo. Clique na tela para tentar novamente.", true);
+            });
+          }
+        };
+
+        // ICE candidate handling
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            console.log("ICE candidate:", event.candidate);
+          }
+        };
+
+        // Create and set local description
+        const offer = await pc.createOffer({
+          offerToReceiveVideo: true,
+          offerToReceiveAudio: false
+        });
+        await pc.setLocalDescription(offer);
+
+        // Wait for ICE gathering to complete
+        await new Promise((resolve) => {
+          if (pc.iceGatheringState === "complete") {
+            resolve();
+          } else {
+            pc.onicegatheringstatechange = () => {
+              if (pc.iceGatheringState === "complete") {
+                resolve();
+              }
+            };
+          }
+        });
+
+        updateStatus('rtc', 'Negociando', false);
+
+        // Send offer to server
+        const response = await fetch("/offer", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sdp: pc.localDescription.sdp,
+            codec: "h264",
+            width: config.video.width,
+            height: config.video.height,
+            fps: config.video.fps,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const answer = await response.json();
+        await pc.setRemoteDescription(answer);
+
+        console.log("WebRTC connection established successfully");
+      }
+
+      // --- MAIN INITIALIZATION ---
       async function initializeApp() {
         if (isInitialized) return;
         isInitialized = true;
 
-        loadingOverlay.innerHTML = "<div>Conectando...</div>";
+        updateLoadingState("Conectando...", true);
         hideError();
 
         try {
-          // Iniciar contador FPS
+          // Start FPS counter
           updateFPS();
 
-          // Configurar WebSocket para controles
-          const wsUrl = `ws://${window.location.hostname}:9000`;
-          ws = new WebSocket(wsUrl);
-          ws.binaryType = "arraybuffer";
-
-          const wsStatusEl = document.getElementById("ws-status");
-          const rtcStatusEl = document.getElementById("rtc-status");
-
-          ws.onopen = () => {
-            if (wsStatusEl) wsStatusEl.textContent = "WS: Conectado";
-            console.log("WebSocket conectado para controles");
-          };
-
-          ws.onclose = () => {
-            if (wsStatusEl) wsStatusEl.textContent = "WS: Desconectado";
-            showError("Conexão com servidor perdida. Recarregue a página.");
-          };
-
-          ws.onerror = (error) => {
-            if (wsStatusEl) wsStatusEl.textContent = "WS: Erro";
-            showError(
-              "Erro na conexão com servidor. Verifique se o servidor Python está rodando."
-            );
-            console.error("WebSocket error:", error);
-          };
-
-          function sendBinary(tipo, id, value) {
+          // Binary message sender
+          function sendBinary(type, id, value) {
             if (ws && ws.readyState === WebSocket.OPEN) {
               const buf = new ArrayBuffer(4);
               const view = new DataView(buf);
-              view.setUint8(0, tipo);
+              view.setUint8(0, type);
               view.setUint8(1, id);
               view.setInt16(2, value, true);
               ws.send(buf);
@@ -814,135 +1140,107 @@
             return Math.round(Math.max(-1, Math.min(1, v)) * 32767);
           }
 
-          // Configurar controles baseado no tipo de dispositivo
+          // Setup WebSocket first
+          updateLoadingState("Conectando controles...", true);
+          await setupWebSocket(sendBinary);
+
+          // Setup controls based on device type
           if (isTouchDevice()) {
             setupOnScreenControls(sendBinary, floatToInt16);
           } else {
             setupGamepadAPI(sendBinary, floatToInt16);
           }
 
-          // Configurar WebRTC para vídeo
-          const configuration = {
-            iceServers: [
-              { urls: "stun:stun.l.google.com:19302" },
-              { urls: "stun:stun1.l.google.com:19302" },
-            ],
-          };
+          // Setup WebRTC
+          updateLoadingState("Estabelecendo conexão de vídeo...", true);
+          await setupWebRTC();
 
-          pc = new RTCPeerConnection(configuration);
+          console.log("Application initialized successfully");
+          reconnectAttempts = 0; // Reset reconnect counter on successful connection
 
-          // Configurar para receber apenas vídeo
-          pc.addTransceiver("video", { direction: "recvonly" });
-
-          pc.onconnectionstatechange = () => {
-            if (rtcStatusEl) {
-              rtcStatusEl.textContent = `WebRTC: ${pc.connectionState}`;
-            }
-
-            if (pc.connectionState === "connected") {
-              loadingOverlay.style.display = "none";
-              videoContainer.style.cursor = "none";
-            } else if (pc.connectionState === "failed") {
-              showError("Falha na conexão de vídeo. Recarregue a página.");
-            }
-          };
-
-          pc.ontrack = (event) => {
-            console.log("Recebendo stream de vídeo");
-            if (event.streams && event.streams[0]) {
-              videoEl.srcObject = event.streams[0];
-              videoEl.play().catch((err) => {
-                console.error("Erro ao reproduzir vídeo:", err);
-                showError("Erro ao reproduzir vídeo: " + err.message);
-              });
-            }
-          };
-
-          // Negociar conexão WebRTC
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-
-          // Aguardar gathering de ICE candidates
-          await new Promise((resolve) => {
-            if (pc.iceGatheringState === "complete") {
-              resolve();
-            } else {
-              pc.onicegatheringstatechange = () => {
-                if (pc.iceGatheringState === "complete") {
-                  resolve();
-                }
-              };
-            }
-          });
-
-          if (rtcStatusEl) rtcStatusEl.textContent = "WebRTC: Negociando...";
-
-          const response = await fetch("/offer", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              sdp: pc.localDescription.sdp,
-              codec: "h264",
-              width: 1920,
-              height: 1080,
-              fps: 60,
-            }),
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-
-          const answer = await response.json();
-          await pc.setRemoteDescription(answer);
-
-          console.log("Conexão WebRTC estabelecida com sucesso");
         } catch (error) {
-          console.error("Erro na inicialização:", error);
+          console.error("Initialization error:", error);
           showError("Erro ao conectar: " + error.message);
-          loadingOverlay.innerHTML =
-            "<div>Erro na conexão. Clique para tentar novamente.</div>";
+          updateLoadingState("Erro na conexão. Clique para tentar novamente.", false);
           isInitialized = false;
         }
       }
 
-      // Configurar botão fullscreen
-      fullscreenBtn.addEventListener("click", () => {
-        if (document.fullscreenElement) {
-          document.exitFullscreen().catch((err) => {
-            console.warn("Erro ao sair do fullscreen:", err);
-          });
-        } else {
-          videoContainer.requestFullscreen().catch((err) => {
-            console.warn("Erro ao entrar em fullscreen:", err);
-          });
+      // --- EVENT LISTENERS ---
+      
+      // Fullscreen button
+      fullscreenBtn.addEventListener("click", async () => {
+        try {
+          if (document.fullscreenElement) {
+            await document.exitFullscreen();
+          } else {
+            await videoContainer.requestFullscreen();
+          }
+        } catch (err) {
+          console.warn("Fullscreen error:", err);
+          showError("Erro ao alterar modo tela cheia.", true);
         }
       });
 
-      // Event listener para iniciar com clique
+      // Reset button
+      resetBtn.addEventListener("click", () => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send("reset");
+          console.log("Reset command sent");
+        }
+      });
+
+      // Click to start
       videoContainer.addEventListener("click", () => {
         if (!isInitialized) {
           initializeApp();
         }
       });
 
-      // Também permitir iniciar com toque em dispositivos touch
-      videoContainer.addEventListener(
-        "touchstart",
-        (e) => {
-          if (!isInitialized) {
-            e.preventDefault();
-            initializeApp();
-          }
-        },
-        { passive: false }
-      );
+      // Touch to start (mobile)
+      videoContainer.addEventListener("touchstart", (e) => {
+        if (!isInitialized) {
+          e.preventDefault();
+          initializeApp();
+        }
+      }, { passive: false });
 
-      // Detectar se a página foi carregada com sucesso
+      // Handle visibility changes
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+          // Page is hidden, pause or reduce activity
+          console.log("Page hidden");
+        } else {
+          // Page is visible again
+          console.log("Page visible");
+        }
+      });
+
+      // Prevent context menu on long press
+      videoContainer.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+      });
+
+      // Handle window resize
+      window.addEventListener("resize", () => {
+        // Update video configuration if needed
+        config.video.width = window.innerWidth >= 1920 ? 1920 : 1280;
+        config.video.height = window.innerHeight >= 1080 ? 1080 : 720;
+      });
+
+      // Initialize on page load
       window.addEventListener("load", () => {
-        console.log("Página carregada. Aguardando clique para iniciar.");
+        console.log("Page loaded. Click/touch to start streaming.");
+      });
+
+      // Handle page unload
+      window.addEventListener("beforeunload", () => {
+        if (ws) {
+          ws.close();
+        }
+        if (pc) {
+          pc.close();
+        }
       });
     </script>
   </body>
